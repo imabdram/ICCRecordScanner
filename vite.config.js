@@ -3,33 +3,47 @@ import { defineConfig, loadEnv } from 'vite';
 /**
  * Vite config for the SIM Management System console.
  *
- * The Neon env vars are written by `neon deploy` / `neon env pull` as
- * NEON_DATA_API_URL and NEON_AUTH_BASE_URL. Vite only exposes VITE_-prefixed
- * variables to the browser, so they are mapped here instead of duplicating them.
+ * DEPLOYMENT (Vercel)
+ *   Build command : npm run build
+ *   Output        : dist
+ *   Framework     : Vite (see vercel.json)
  *
- * Note: those two URLs are public information (they are the API endpoints the
- * browser calls). No database credential or secret is exposed this way.
+ * ENVIRONMENT
+ *   Only two variables matter, and both are PUBLIC:
+ *     VITE_SUPABASE_URL               https://<ref>.supabase.co
+ *     VITE_SUPABASE_PUBLISHABLE_KEY   sb_publishable_...
+ *
+ *   Vite exposes any VITE_-prefixed variable to the browser automatically, so
+ *   there is no `define` mapping here (the old Neon build needed one because
+ *   those variables were not VITE_-prefixed).
+ *
+ *   The service-role / `sb_secret_` key is NEVER referenced here. It lives only
+ *   in the Edge Function environment. If it ever appears in this file or in a
+ *   VITE_-prefixed variable, it is in the browser bundle and must be rotated.
  */
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
 
-  const dataApiUrl = env.VITE_NEON_DATA_API_URL ?? env.NEON_DATA_API_URL ?? '';
-  // The SDK derives `${base}/auth` itself, so pass the branch base URL and strip
-  // any trailing `/auth` from the value Neon reports (`NEON_AUTH_BASE_URL`).
-  // Must include the /auth suffix: the auth client uses it verbatim as baseURL.
-  const authUrl = env.VITE_NEON_AUTH_URL ?? env.NEON_AUTH_BASE_URL ?? '';
+  const supabaseUrl = (env.VITE_SUPABASE_URL ?? '').trim();
+  const supabaseKey = (env.VITE_SUPABASE_PUBLISHABLE_KEY ?? '').trim();
 
-  if (mode === 'production' && (!dataApiUrl || !authUrl)) {
+  if (!supabaseUrl || !supabaseKey) {
     console.warn(
-      '\n[build] NEON_DATA_API_URL / NEON_AUTH_BASE_URL are missing. ' +
-        'Run `neon deploy` first so .env.local is written; the bundle will boot to a "not configured" screen.\n',
+      '\n[build] VITE_SUPABASE_URL / VITE_SUPABASE_PUBLISHABLE_KEY are missing.\n' +
+        '         The site will boot to a "not configured" screen.\n' +
+        '         Locally: copy .env.example to .env.local. On Vercel: set them in\n' +
+        '         Project Settings -> Environment Variables, then redeploy.\n',
     );
   }
 
   return {
-    define: {
-      'import.meta.env.VITE_NEON_DATA_API_URL': JSON.stringify(dataApiUrl),
-      'import.meta.env.VITE_NEON_AUTH_URL': JSON.stringify(authUrl),
+    // Relative-safe defaults. Vite rewrites asset URLs against the deployment
+    // origin, which is what Vercel serves from, so no `base` is required.
+    build: {
+      outDir: 'dist',
+      sourcemap: false,
+      // Keep the bundle small: the console is a handful of ES modules.
+      target: 'es2020',
     },
     server: {
       port: 5173,
@@ -38,10 +52,6 @@ export default defineConfig(({ mode }) => {
     preview: {
       port: 8080,
       strictPort: true,
-    },
-    build: {
-      outDir: 'dist',
-      sourcemap: false,
     },
   };
 });

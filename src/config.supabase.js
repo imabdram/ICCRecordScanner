@@ -9,13 +9,27 @@
  * The matching SECRET key (`sb_secret_...`) must never appear in this file,
  * in the browser, or in the APK. It lives only in Edge Function secrets.
  *
+ * Values come from the environment so the same build works against any
+ * project. Vite exposes every VITE_-prefixed variable to the browser:
+ *   VITE_SUPABASE_URL               (see .env.example)
+ *   VITE_SUPABASE_PUBLISHABLE_KEY
+ *
+ * The literals below are a development fallback only, so `npm run dev` works
+ * on a fresh clone with no .env.local. They are not secrets.
+ *
  * The phone app does NOT use this file, and does not use supabase_flutter.
  * It is offline-first: no login, no session, no auth library. When it does
  * upload, it calls the `upload_scans` RPC with a device key over plain HTTPS.
  */
 
-export const SUPABASE_URL = 'https://emyycswvbdwiqgzsdxsg.supabase.co';
-export const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_VX9t2k0xjWAJDsvJgRrLXQ_K6HawBvY';
+const envUrl = import.meta.env?.VITE_SUPABASE_URL;
+const envKey = import.meta.env?.VITE_SUPABASE_PUBLISHABLE_KEY;
+
+export const SUPABASE_URL =
+  (envUrl ?? '').trim() || 'https://emyycswvbdwiqgzsdxsg.supabase.co';
+
+export const SUPABASE_PUBLISHABLE_KEY =
+  (envKey ?? '').trim() || 'sb_publishable_VX9t2k0xjWAJDsvJgRrLXQ_K6HawBvY';
 
 /**
  * Supabase Auth is email-first, but this system is username-first.

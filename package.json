@@ -3,7 +3,10 @@
   "private": true,
   "version": "2.0.0",
   "type": "module",
-  "description": "SIM Management System console — Zone/Region/Outlet/User hierarchy on Neon (Lakebase Postgres, Neon Auth, Data API).",
+  "description": "SIM Management System console — Zone/Region/Outlet/User hierarchy on Supabase (Postgres + Auth).",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "vite",
     "build": "vite build",

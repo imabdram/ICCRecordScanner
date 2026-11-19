@@ -42,6 +42,20 @@ flutter pub get             # app dependencies
 flutter run                 # app on a connected device
 ```
 
+## Deployment
+
+The website deploys to **Vercel** as a plain Vite build — see
+[`VERCEL.md`](VERCEL.md) for the import steps, the two required environment
+variables, and the headers already configured in `vercel.json`.
+
+```bash
+npm run build      # -> dist/
+```
+
+`VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` must be set in the
+Vercel project. Both are public; the service-role key is never a `VITE_`
+variable.
+
 ## Database
 
 The live schema is **`scripts/schema_v2_greenfield.sql`**, a rebuild for
