@@ -1,0 +1,270 @@
+import { $, avatar, banner, h, icon, mount } from './ui.js';
+import { AUTH_URL, DATA_API_URL } from './config.js';
+import { getSession, isConfigured, signOut } from './neon.js';
+import { fetchProfile } from './data.js';
+import { renderLogin } from './views/login.js';
+import { renderDashboard } from './views/dashboard.js';
+import { renderRecords } from './views/records.js';
+import { renderUsers } from './views/users.js';
+import { renderSettings } from './views/settings.js';
+
+const root = $('#app');
+
+const NAV = [
+
+  { id: 'dashboard', label: 'Dashboard', icon: 'dashboard', render: renderDashboard },
+  { id: 'records', label: 'Scan Records', icon: 'records', render: renderRecords },
+  { id: 'users', label: 'Users & Team', icon: 'users', render: renderUsers },
+  { id: 'settings', label: 'Settings', icon: 'key', render: renderSettings },
+];
+
+const LOADING = () =>
+  h(
+    'div',
+    { class: 'content' },
+    h('div', { class: 'panel' }, h('p', { class: 'muted' }, 'Loading…')),
+  );
+
+async function start() {
+  if (!isConfigured) {
+    mount(
+      root,
+      h(
+        'div',
+        { class: 'panel narrow' },
+        banner(
+          'error',
+          'NEON_AUTH_BASE_URL / NEON_DATA_API_URL are missing from this build. Run `neon deploy` and rebuild.',
+        ),
+        h('button', { class: 'btn', onclick: () => window.location.reload() }, 'Retry'),
+      ),
+    );
+    return;
+  }
+
+  const session = await getSession();
+  if (!session) {
+    renderLogin(root, () => boot());
+    return;
+  }
+  await boot();
+}
+
+async function boot() {
+  const session = await getSession();
+  if (!session) {
+    renderLogin(root, () => boot());
+    return;
+  }
+
+  const email = session.user?.email ?? '';
+  let profile = null;
+  let profileError = null;
+  try {
+    profile = await fetchProfile();
+  } catch (error) {
+    profileError = error.message;
+  }
+
+  if (!profile) {
+    mount(
+      root,
+      h(
+        'div',
+        { class: 'auth-wrap' },
+        h(
+          'div',
+          { class: 'panel narrow' },
+          h('h1', {}, 'Account not linked'),
+          h('p', { class: 'muted' }, `Signed in as ${email}, but no profile row is linked to this account yet.`),
+          h('p', { class: 'muted' }, 'An administrator must add you to Users & Team with an outlet.'),
+          profileError ? banner('error', profileError) : null,
+          h('button', { class: 'btn secondary block', onclick: logout }, 'Sign out'),
+        ),
+      ),
+    );
+    return;
+  }
+
+  const sidebar = h('aside', { class: 'sidebar', id: 'sidebar' });
+  const content = h('main', { class: 'content' });
+  const scrim = h('div', { class: 'scrim', hidden: true, onclick: () => closeDrawer() });
+
+  const closeDrawer = () => {
+    sidebar.classList.remove('open');
+    scrim.hidden = true;
+  };
+  const openDrawer = () => {
+    sidebar.classList.add('open');
+    scrim.hidden = false;
+  };
+
+  // Which view is rendered right now, so hash navigation never re-renders the
+  // page (or re-fetches) for the view that is already on screen.
+  let currentView = null;
+
+  const renderView = (view) => {
+    currentView = view;
+    for (const b of sidebar.querySelectorAll('button[data-view]')) {
+      const on = b.dataset.view === view;
+      b.classList.toggle('active', on);
+      b.setAttribute('aria-current', on ? 'page' : 'false');
+    }
+    closeDrawer();
+    const entry = NAV.find((n) => n.id === view) ?? NAV[0];
+    document.title = `${entry.label} · SIM Management System`;
+    mount(content, h('div', { class: 'panel' }, h('p', { class: 'muted' }, 'Loading…')));
+    entry.render(content, { profile, go });
+    window.scrollTo({ top: 0 });
+  };
+
+  const viewFromHash = () => (window.location.hash || '#dashboard').slice(1);
+  const normalise = (view) => (NAV.some((n) => n.id === view) ? view : 'dashboard');
+
+  // Navigation is URL-driven (#dashboard, #records, #users), so Back/Forward and
+  // deep links work. renderView is idempotent, so any path may call it safely.
+  const go = (view) => {
+    const target = normalise(view);
+    const hashMatches = window.location.hash === `#${target}`;
+    if (target !== currentView) renderView(target);
+    else closeDrawer();
+    if (!hashMatches) {
+      // The boot view is written with replaceState (see below) so it is a real
+      // history entry that Back can return to; later navigation pushes.
+      if (window.location.hash === '') window.history.replaceState(null, '', `#${target}`);
+      else window.location.hash = `#${target}`;
+    }
+  };
+
+  window.addEventListener('hashchange', () => {
+    const v = normalise(viewFromHash());
+    if (v !== currentView) renderView(v);
+  });
+
+  sidebar.append(
+    h('div', { class: 'brand' }, h('span', { class: 'dot' }), 'SIM Management'),
+    h(
+      'div',
+      { class: 'who' },
+      avatar(profile.full_name, profile.email),
+      h(
+        'div',
+        { style: { minWidth: '0' } },
+        h('div', { class: 'name' }, profile.full_name || email),
+        h('div', { class: 'meta' }, `${profile.outlet_name ?? 'No outlet'} · ${profile.region_name ?? '—'}`),
+      ),
+    ),
+    h(
+      'nav',
+      { 'aria-label': 'Primary' },
+      h('div', { class: 'nav-title' }, 'Workspace'),
+      ...NAV.map((n) =>
+        h(
+          'button',
+          { dataset: { view: n.id }, onclick: () => go(n.id) },
+          icon(n.icon, 18),
+          n.label,
+        ),
+      ),
+    ),
+    h('div', { class: 'spacer' }),
+    h('button', { class: 'btn secondary', onclick: logout }, icon('logout', 16, 'ico', true), 'Sign out'),
+  );
+
+  mount(
+    root,
+    h(
+      'div',
+      { class: 'shell' },
+      sidebar,
+      scrim,
+      h(
+        'div',
+        {},
+        h(
+          'button',
+          { class: 'btn secondary sm menu-btn', onclick: openDrawer, 'aria-label': 'Open menu' },
+          icon('menu', 16, 'ico', true),
+          'Menu',
+        ),
+        content,
+      ),
+    ),
+  );
+
+  // First paint: honour a deep link (#records), otherwise start at the
+  // dashboard. The URL is normalised with replaceState so the landing view is
+  // not an extra Back stop.
+  // Need a second history entry so the very first Back stays inside the app.
+  // A fresh page load (including sign-in) already owns one entry, so pushing
+  // our own would make Back leave the app; a deep link (#users) adds an entry
+  // of its own and must not get another one either.
+  const bootView = normalise(viewFromHash());
+  const bootHasOwnEntry = window.location.hash !== '' && window.location.hash !== `#${bootView}`;
+  if (window.location.hash === '') {
+    // Set the hash first: replacing on a hashless URL only rewrites the current
+    // entry, while replacing an existing hash can pop it off the stack.
+    window.location.hash = `#${bootView}`;
+  }
+  if (!bootHasOwnEntry) window.history.pushState(null, '', `#${bootView}`);
+  go(bootView);
+
+  // A just-created account briefly becomes the signed-in user (sign-up always
+  // signs in), so warn instead of silently showing someone else's view.
+  const pending = sessionStorage.getItem('newUserEmail');
+  if (pending) {
+    sessionStorage.removeItem('newUserEmail');
+    content.prepend(
+      banner('warn', `Created ${pending}. The new account is now signed in in this browser.`, h(
+        'button',
+        { class: 'btn secondary sm', onclick: () => window.location.reload() },
+        'Return to my account',
+      )),
+    );
+  }
+}
+
+async function logout() {
+  // Kick off the session revocation, but NEVER block the UI on it: a slow or
+  // failed request must not leave the user stuck signed in. If the sign-out
+  // call really fails, the session is still live, so show the error and let
+  // them reload instead of pretending they are signed out.
+  const pending = signOut().then(
+    () => ({ ok: true }),
+    (error) => ({ ok: false, error }),
+  );
+  window.location.hash = '#dashboard';
+  mount(root, h('div', { class: 'auth-wrap' }, h('div', { class: 'panel narrow' }, h('p', { class: 'muted' }, 'Signing out…'))));
+
+  const outcome = await Promise.race([
+    pending,
+    new Promise((resolve) => setTimeout(() => resolve({ ok: true, timedOut: true }), 8000)),
+  ]);
+
+  if (!outcome.ok) {
+    mount(
+      root,
+      h(
+        'div',
+        { class: 'auth-wrap' },
+        h(
+          'div',
+          { class: 'panel narrow' },
+          banner('error', `Could not sign out: ${outcome.error?.message ?? 'unknown error'}`),
+          h('button', { class: 'btn block', onclick: () => window.location.reload() }, 'Reload'),
+        ),
+      ),
+    );
+    return;
+  }
+  await boot();
+}
+
+document.documentElement.dataset.authUrl = AUTH_URL;
+document.documentElement.dataset.dataApiUrl = DATA_API_URL;
+
+start().catch((error) => {
+  mount(root, h('div', { class: 'panel narrow' }, h('h1', {}, 'Could not start'), h('p', { class: 'error' }, error.message)));
+});
+
+export { LOADING };

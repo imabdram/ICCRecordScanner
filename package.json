@@ -1,0 +1,26 @@
+{
+  "name": "sim-management-system",
+  "private": true,
+  "version": "2.0.0",
+  "type": "module",
+  "description": "SIM Management System console — Zone/Region/Outlet/User hierarchy on Neon (Lakebase Postgres, Neon Auth, Data API).",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "db:connection": "node scripts/db.mjs connection",
+    "db:schema": "node scripts/db.mjs sql-file scripts/schema.sql",
+    "db:seed": "node scripts/db.mjs sql-file scripts/seed.sql",
+    "db:demo-users": "node scripts/demo-users.mjs",
+    "neon:deploy": "neon deploy --env .env.local"
+  },
+  "dependencies": {
+    "@neon/config": "^1.14.0",
+    "@neon/env": "^2.1.3",
+    "@neon/neon-js": "^0.10.2"
+  },
+  "devDependencies": {
+    "playwright": "^1.65.0",
+    "vite": "^7.1.0"
+  }
+}
