@@ -1,11 +1,15 @@
 import { avatar, banner, h, icon, mount, pill, roleName, rolePill, skeletonPanel, switchToggle, table } from '../ui.js';
-import { createAccount, neon, requestPasswordReset, unwrap } from '../neon.js';
+import { callAdmin } from '../supabase.js';
 import { fetchTree, fetchUsers, updateUser } from '../data.js';
 
 /**
  * User management. An account is two rows:
- *   1. neon_auth.user (the login, created by Managed Better Auth)
- *   2. public.users  (role + outlet; region and zone derive from the outlet)
+ *   1. auth.users  (the login, created by the admin-user Edge Function)
+ *   2. public.users (role + outlet; region and zone derive from the outlet)
+ *
+ * Both rows are created server-side with the service role, because creating an
+ * auth user needs it. That also means creating someone does NOT sign them in
+ * here, so the administrator's own session survives the operation.
  *
  * The create form is opened from a "+ New user" button (modal), not an inline
  * dropdown panel. Choosing an outlet is Region -> Outlet, so only the outlets in
@@ -68,7 +72,9 @@ export async function renderUsers(root, { profile }) {
                   onChange: async (next) => {
                     control.input.disabled = true;
                     try {
-                      await updateUser(u.id, { active: next });
+                      // Goes through the Edge Function: disabling must also ban
+                      // the auth login, which needs the service role.
+                      await callAdmin('set-active', { user_id: u.id, active: next });
                       mount(status, banner('ok', `${u.full_name || u.username} is now ${next ? 'active' : 'disabled'}.`));
                       await reload();
                     } catch (error) {
@@ -230,31 +236,41 @@ function openEditUser(user, { tree, users, viewer, onSaved }) {
   const status = h('div', {});
   const picker = regionOutletPicker(tree, { initialOutletId: user.outlet_id, disabled: locked });
 
-  // ---- password (reset email; the current password is never readable) ----
+  // ---- password: an administrator sets it (service role, Edge Function) ----
   const pwStatus = h('div', {});
-  const sendReset = h(
+  const newPassword = h('input', {
+    type: 'password',
+    minlength: '8',
+    autocomplete: 'new-password',
+    placeholder: 'At least 8 characters',
+  });
+  const setPassword = h(
     'button',
     {
       class: 'btn secondary',
       type: 'button',
       onclick: async () => {
-        sendReset.disabled = true;
-        sendReset.replaceChildren(h('span', { class: 'spin' }), document.createTextNode('Sending…'));
+        pwStatus.replaceChildren();
+        if ((newPassword.value ?? '').length < 8) {
+          pwStatus.replaceChildren(banner('error', 'Choose a password of at least 8 characters.'));
+          return;
+        }
+        setPassword.disabled = true;
+        setPassword.replaceChildren(h('span', { class: 'spin' }), document.createTextNode('Saving…'));
         try {
-          await requestPasswordReset(user.username);
-          pwStatus.replaceChildren(
-            banner('ok', `A password-reset email was sent to ${user.username}. They choose their own new password from the link.`),
-          );
+          await callAdmin('set-password', { user_id: user.id, password: newPassword.value });
+          newPassword.value = '';
+          pwStatus.replaceChildren(banner('ok', `Password set for ${user.username}. Give it to them directly.`));
         } catch (error) {
           pwStatus.replaceChildren(banner('error', error.message));
         } finally {
-          sendReset.disabled = false;
-          sendReset.replaceChildren(icon('key', 16, 'ico', true), document.createTextNode('Send reset email'));
+          setPassword.disabled = false;
+          setPassword.replaceChildren(icon('key', 16, 'ico', true), document.createTextNode('Set password'));
         }
       },
     },
     icon('key', 16, 'ico', true),
-    'Send reset email',
+    'Set password',
   );
 
   const submit = h('button', { class: 'btn', type: 'submit' }, 'Save changes');
@@ -273,7 +289,6 @@ function openEditUser(user, { tree, users, viewer, onSaved }) {
             const patch = {
               full_name: fullName.value.trim(),
               phone: phone.value.trim(),
-              active: active.checked,
             };
             if (!locked) {
               patch.team_leader_id = leader.value || null;
@@ -282,6 +297,13 @@ function openEditUser(user, { tree, users, viewer, onSaved }) {
             if (canSetRole && !locked) patch.role = role.value;
             if (locked) patch.team_leader_id = viewer.user_id;
             await updateUser(user.id, patch);
+
+            // The active flag is deliberately separate: disabling must also ban
+            // the auth login, which only the Edge Function can do.
+            if (active.checked !== user.active) {
+              await callAdmin('set-active', { user_id: user.id, active: active.checked });
+            }
+
             modal.close();
             await onSaved?.(`${patch.full_name || name} updated.`);
           } catch (error) {
@@ -296,7 +318,7 @@ function openEditUser(user, { tree, users, viewer, onSaved }) {
         { class: 'form-grid' },
         field('Full name', fullName, 'Shown on the leaderboard'),
         field('Phone', phone, 'Optional'),
-        field('Email', h('input', { type: 'text', value: user.username, disabled: true }), 'Sign-in identity, cannot be changed here'),
+        field('Username', h('input', { type: 'text', value: user.username, disabled: true }), 'Sign-in identity, cannot be changed here'),
         field('Role', role, canSetRole ? 'Determines what they can see' : 'Only an admin or supervisor can change this'),
         field('Team leader', leader, locked ? 'Fixed: you manage this rep' : 'For sales reps'),
       ),
@@ -310,8 +332,8 @@ function openEditUser(user, { tree, users, viewer, onSaved }) {
       h(
         'div',
         { class: 'password-box' },
-        h('div', {}, h('span', { class: 'field-label' }, 'Password'), h('div', { class: 'field-hint' }, 'Passwords are stored hashed and can never be read. Send a reset email so they set their own.')),
-        sendReset,
+        h('div', {}, h('span', { class: 'field-label' }, 'Password'), h('div', { class: 'field-hint' }, 'Stored hashed and never readable. Set a new one and give it to them — there is no reset email.')),
+        h('div', { class: 'inline-row' }, newPassword, setPassword),
         pwStatus,
       ),
       h(
@@ -420,7 +442,14 @@ function openCreateUser({ tree, users, viewer, onDone }) {
   const asLeader = viewer.role === 'team_leader';
 
   const fullName = h('input', { type: 'text', required: true, placeholder: 'e.g. Ali Abdi', autocomplete: 'off' });
-  const email = h('input', { type: 'email', required: true, placeholder: 'rep@example.com', autocomplete: 'off' });
+  const username = h('input', {
+    type: 'text',
+    required: true,
+    placeholder: 'e.g. ali.abdi',
+    autocomplete: 'off',
+    autocapitalize: 'none',
+    spellcheck: 'false',
+  });
   const password = h('input', { type: 'password', required: true, minlength: '8', placeholder: 'At least 8 characters', autocomplete: 'new-password' });
   const phone = h('input', { type: 'tel', placeholder: 'Optional', autocomplete: 'off' });
   const role = h(
@@ -453,33 +482,26 @@ function openCreateUser({ tree, users, viewer, onDone }) {
           submit.disabled = true;
           status.replaceChildren(h('p', { class: 'muted' }, 'Creating account…'));
           try {
-            const created = await createAccount(email.value.trim(), password.value, fullName.value.trim());
-            const authUserId = created?.user?.id;
-            if (!authUserId) throw new Error('Account created but no user id was returned.');
+            // One call creates both the auth user and the public.users row.
+            // It runs with the service role, so it does NOT sign the new user
+            // in — the administrator keeps their own session.
+            const created = await callAdmin('create-user', {
+              username: username.value.trim(),
+              password: password.value,
+              full_name: fullName.value.trim(),
+              phone: phone.value.trim(),
+              role: role.value,
+              outlet_id: picker.outlet.value || null,
+              team_leader_id: leader.value || null,
+            });
 
-            const inserted = unwrap(
-              await neon()
-                .from('users')
-                .insert({
-                  auth_user_id: authUserId,
-                  username: email.value.trim(),
-                  full_name: fullName.value.trim(),
-                  phone: phone.value.trim(),
-                  role: role.value,
-                  outlet_id: picker.outlet.value || null,
-                  team_leader_id: leader.value || null,
-                })
-                .select(),
-            );
-            const name = inserted?.[0]?.full_name ?? fullName.value.trim();
+            const name = created?.user?.full_name || fullName.value.trim();
             const outletLabel = picker.outlet.selectedOptions[0]?.text ?? 'an outlet';
-            sessionStorage.setItem('newUserEmail', email.value.trim());
             modal.close();
             onDone?.();
             flash(
-              'warn',
-              `${name} created and linked to ${outletLabel}. Region and zone come from that outlet. The new account is now signed in in this browser.`,
-              h('button', { class: 'btn secondary sm', type: 'button', onclick: () => window.location.reload() }, 'Return to my account'),
+              'ok',
+              `${name} created and linked to ${outletLabel}. Give them the username and password you chose.`,
             );
           } catch (error) {
             status.replaceChildren(banner('error', error.message));
@@ -492,8 +514,8 @@ function openCreateUser({ tree, users, viewer, onDone }) {
         'div',
         { class: 'form-grid' },
         field('Full name', fullName, 'Shown on the leaderboard'),
-        field('Email', email, 'Used to sign in'),
-        field('Temporary password', password, 'Give this to the user'),
+        field('Username', username, 'Used to sign in — letters, digits, dot, dash'),
+        field('Password', password, 'Give this to the user'),
         field('Phone', phone, 'Optional'),
         field('Role', role, 'Determines what they can see'),
         field('Team leader', leader, 'For sales reps'),

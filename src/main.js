@@ -1,6 +1,6 @@
 import { $, avatar, banner, h, icon, mount } from './ui.js';
-import { AUTH_URL, DATA_API_URL } from './config.js';
-import { getSession, isConfigured, signOut } from './neon.js';
+import { SUPABASE_URL } from './config.supabase.js';
+import { getSession, isConfigured, signOut, usernameFrom } from './supabase.js';
 import { fetchProfile } from './data.js';
 import { renderLogin } from './views/login.js';
 import { renderDashboard } from './views/dashboard.js';
@@ -34,7 +34,8 @@ async function start() {
         { class: 'panel narrow' },
         banner(
           'error',
-          'NEON_AUTH_BASE_URL / NEON_DATA_API_URL are missing from this build. Run `neon deploy` and rebuild.',
+          'VITE_SUPABASE_URL / VITE_SUPABASE_PUBLISHABLE_KEY are missing from this build. ' +
+            'Set them in .env.local (local) or Project Settings → Environment Variables (Vercel), then rebuild.',
         ),
         h('button', { class: 'btn', onclick: () => window.location.reload() }, 'Retry'),
       ),
@@ -57,7 +58,8 @@ async function boot() {
     return;
   }
 
-  const email = session.user?.email ?? '';
+  // Show the username, not the synthetic address behind it.
+  const who = usernameFrom(session?.user?.email ?? '');
   let profile = null;
   let profileError = null;
   try {
@@ -76,7 +78,7 @@ async function boot() {
           'div',
           { class: 'panel narrow' },
           h('h1', {}, 'Account not linked'),
-          h('p', { class: 'muted' }, `Signed in as ${email}, but no profile row is linked to this account yet.`),
+          h('p', { class: 'muted' }, `Signed in as ${who}, but no profile row is linked to this account yet.`),
           h('p', { class: 'muted' }, 'An administrator must add you to Users & Team with an outlet.'),
           profileError ? banner('error', profileError) : null,
           h('button', { class: 'btn secondary block', onclick: logout }, 'Sign out'),
@@ -146,11 +148,11 @@ async function boot() {
     h(
       'div',
       { class: 'who' },
-      avatar(profile.full_name, profile.email),
+      avatar(profile.full_name, profile.username),
       h(
         'div',
         { style: { minWidth: '0' } },
-        h('div', { class: 'name' }, profile.full_name || email),
+        h('div', { class: 'name' }, profile.full_name || profile.username),
         h('div', { class: 'meta' }, `${profile.outlet_name ?? 'No outlet'} · ${profile.region_name ?? '—'}`),
       ),
     ),
@@ -209,19 +211,10 @@ async function boot() {
   if (!bootHasOwnEntry) window.history.pushState(null, '', `#${bootView}`);
   go(bootView);
 
-  // A just-created account briefly becomes the signed-in user (sign-up always
-  // signs in), so warn instead of silently showing someone else's view.
-  const pending = sessionStorage.getItem('newUserEmail');
-  if (pending) {
-    sessionStorage.removeItem('newUserEmail');
-    content.prepend(
-      banner('warn', `Created ${pending}. The new account is now signed in in this browser.`, h(
-        'button',
-        { class: 'btn secondary sm', onclick: () => window.location.reload() },
-        'Return to my account',
-      )),
-    );
-  }
+  // Note: creating a user no longer signs the new account in. Accounts are made
+  // by the admin-user Edge Function with the service role, so the administrator
+  // keeps their own session. (The Neon build used signUp, which did switch the
+  // browser to the new user — that whole workaround is gone.)
 }
 
 async function logout() {
@@ -260,8 +253,7 @@ async function logout() {
   await boot();
 }
 
-document.documentElement.dataset.authUrl = AUTH_URL;
-document.documentElement.dataset.dataApiUrl = DATA_API_URL;
+document.documentElement.dataset.supabaseUrl = SUPABASE_URL;
 
 start().catch((error) => {
   mount(root, h('div', { class: 'panel narrow' }, h('h1', {}, 'Could not start'), h('p', { class: 'error' }, error.message)));

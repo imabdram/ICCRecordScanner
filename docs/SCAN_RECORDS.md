@@ -1,5 +1,13 @@
 # Scan records: where they are stored
 
+> **Status: describes the retired Neon backend.** The two-store idea and the
+> sync rules still apply, but the storage details changed: scans may now belong
+> to a **device** rather than a signed-in rep (`sales_rep_id` is nullable), the
+> phone identifies itself with a device key instead of a session, and uploads
+> are **push-only** — the phone never deletes a local scan because the cloud
+> disagreed. The authoritative schema is
+> [`scripts/schema_v2_greenfield.sql`](../scripts/schema_v2_greenfield.sql).
+
 A scan record (one registered SIM) is stored in **two places**, for two different
 reasons:
 

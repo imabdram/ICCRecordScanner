@@ -1,10 +1,29 @@
 import { banner, h, icon, mount, setBusy } from '../ui.js';
-import { signIn } from '../neon.js';
+import { signIn } from '../supabase.js';
 
-/** Sign-in against Managed Better Auth (returns the session cookie). */
+/**
+ * Sign-in with a username and password.
+ *
+ * The username is mapped to `username@sim.local` before reaching Supabase Auth,
+ * so nobody has to type or remember an email address. There is no "forgot
+ * password" link: accounts are created by an administrator, and an administrator
+ * sets a new password from Users & Team.
+ */
 export function renderLogin(root, onSignedIn) {
-  const email = h('input', { type: 'email', required: true, autocomplete: 'username', placeholder: 'you@example.com' });
-  const password = h('input', { type: 'password', required: true, autocomplete: 'current-password', placeholder: 'Enter your password' });
+  const username = h('input', {
+    type: 'text',
+    required: true,
+    autocomplete: 'username',
+    autocapitalize: 'none',
+    spellcheck: 'false',
+    placeholder: 'your.username',
+  });
+  const password = h('input', {
+    type: 'password',
+    required: true,
+    autocomplete: 'current-password',
+    placeholder: 'Enter your password',
+  });
   const message = h('div', {});
   const submit = h('button', { class: 'btn block', type: 'submit' }, 'Sign in');
 
@@ -16,7 +35,9 @@ export function renderLogin(root, onSignedIn) {
         message.replaceChildren();
         setBusy(submit, true, 'Signing in…');
         try {
-          await signIn(email.value.trim(), password.value);
+          // Trim only: usernames are already stored lower-case, and the mapping
+          // to the synthetic email lower-cases again.
+          await signIn(username.value.trim(), password.value);
           await onSignedIn();
         } catch (error) {
           message.append(banner('error', error.message));
@@ -37,13 +58,13 @@ export function renderLogin(root, onSignedIn) {
       h('p', { class: 'muted', style: { marginTop: '6px' } }, 'Sign in to the Bari Region operations console.'),
     ),
     message,
-    h('label', { class: 'field' }, h('span', {}, 'Email'), email),
+    h('label', { class: 'field' }, h('span', {}, 'Username'), username),
     h('label', { class: 'field', style: { marginTop: '14px' } }, h('span', {}, 'Password'), password),
     h('div', { style: { marginTop: '20px' } }, submit),
     h(
       'p',
       { class: 'muted', style: { textAlign: 'center', fontSize: '12.5px', marginTop: '16px' } },
-      'Accounts are created by an administrator in Users & Team.',
+      'Accounts are created by an administrator. If you have forgotten your password, ask them to set a new one — there is no reset email.',
     ),
   );
 
@@ -51,5 +72,5 @@ export function renderLogin(root, onSignedIn) {
     root,
     h('div', { class: 'auth-wrap' }, h('div', { class: 'panel narrow', style: { width: '100%' } }, form)),
   );
-  email.focus();
+  username.focus();
 }

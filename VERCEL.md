@@ -21,7 +21,7 @@ Vercel only needs to run `npm run build` and serve `dist`.
 | Build command | `npm run build` |
 | Output directory | `dist` |
 
-## 2. Environment variables (required)
+## 2. Environment variables
 
 Project Settings → **Environment Variables** → add both, for
 Production *and* Preview:
@@ -34,13 +34,15 @@ Production *and* Preview:
 Both are **public** — they are compiled into the browser bundle on purpose.
 Security comes from Row Level Security in Postgres, not from hiding them.
 
+`src/config.supabase.js` carries the same two values as a fallback, so a deploy
+without these variables still works. Set them anyway: it makes switching
+projects a configuration change rather than a code change, and it keeps the
+build log honest about which project it targets.
+
 > **Never** add `SUPABASE_SERVICE_ROLE_KEY` or an `sb_secret_...` key as a
 > `VITE_`-prefixed variable. Vite inlines `VITE_*` values into the JavaScript
 > bundle, which would publish the key that bypasses RLS. The service-role key
 > belongs only in the Supabase Edge Function environment.
-
-Without these two variables the build still succeeds but the site boots to a
-"not configured" screen — check the build log for the warning.
 
 ## 3. Deploy
 
@@ -114,13 +116,31 @@ Nothing in the build depends on the hostname.
 
 ---
 
-## Known blocker before this deploy is useful
+## Status of the data layer
 
-`src/` still talks to **Neon** (`src/neon.js`, `src/data.js`,
-`src/views/login.js`). The Supabase data layer is not written yet, so a deploy
-right now ships a console that cannot sign in — it will show the configuration
-error or fail on the first request.
+`src/` now talks to Supabase (`src/supabase.js`, `src/data.js`) and no longer
+references Neon — that client, its config, its scripts and its dependencies were
+removed. Sign-in is username + password against `username@sim.local`.
 
-Deploying is safe to *set up* now (build pipeline, env vars, headers), but the
-site only becomes functional after the data layer is ported to
-`@supabase/supabase-js` — build steps 4–6 of `docs/PLAN_SUPABASE_GREENFIELD.md`.
+What to verify on the first real deployment, in order:
+
+1. Build log shows `vite build` completing **and** no missing-env warning.
+2. The sign-in screen appears (not "not configured").
+3. Signing in as the bootstrap admin works.
+4. Users & Team can create a user — this exercises the `admin-user` Edge
+   Function, which must be deployed with `--no-verify-jwt`
+   (see `supabase/DEPLOY_ADMIN_FUNCTION.md`).
+
+If step 4 fails with `401`/`403`, the function is missing, JWT verification is
+still on, or `BOOTSTRAP_ADMIN_TOKEN` was never set — check the GET health
+endpoint first.
+
+### What was verified locally, and what was not
+
+- **Verified:** every web module parses (`node --check`), and the import graph
+  resolves end to end — no missing files, no named import that its target does
+  not export (`node tools/check-imports.mjs .`).
+- **Not verified:** the Vite build itself. Vite cannot run in this development
+  sandbox because esbuild and Vite's Windows path probe both need to spawn child
+  processes, which the sandbox blocks. The build must be confirmed by Vercel's
+  build log, and the four checks above.

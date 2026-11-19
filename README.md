@@ -183,6 +183,12 @@ Output: `build/app/outputs/flutter-apk/app-release.apk`.
 ## History
 
 This repository previously targeted Neon (Lakebase Postgres + Managed Better
-Auth). That stack is retired; the doc `docs/PLAN_SUPABASE_GREENFIELD.md` records
-the reasoning and the migration. `neon.ts`, `src/neon.js` and `scripts/schema.sql`
-remain only until they are deleted.
+Auth). That stack is retired and **its code has been removed**: the client
+(`src/neon.js`), its config (`src/config.js`), the root `neon.ts`, the
+`@neon/*` dependencies, the Neon scripts and the old `functions/probe` are all
+gone. `docs/PLAN_SUPABASE_GREENFIELD.md` records the reasoning for the move, and
+`git log` keeps the old code if it is ever needed.
+
+`docs/HIERARCHY.md` and `docs/SCAN_RECORDS.md` still describe the Neon-era
+tables; they are kept for the hierarchy rationale, but the authoritative schema
+is `scripts/schema_v2_greenfield.sql`.

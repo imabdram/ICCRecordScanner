@@ -1,5 +1,12 @@
 # Hierarchy: Zone → Region → Outlet → User
 
+> **Status: describes the retired Neon backend.** The hierarchy and the rules
+> below still hold, but some column details do not (`auth_user_id` is a `uuid`
+> now, addresses are `auth.uid()`, scans may belong to a device instead of a
+> person). The authoritative schema is
+> [`scripts/schema_v2_greenfield.sql`](../scripts/schema_v2_greenfield.sql);
+> see the repository README for the current model.
+
 This document describes the organisational structure the app models, how it is
 stored in Postgres, and the access rules that follow from it.
 

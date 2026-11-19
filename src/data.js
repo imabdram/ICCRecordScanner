@@ -1,21 +1,30 @@
 /**
  * Reads the Zone -> Region -> Outlet -> User tree and the scan counters.
  *
- * Every query goes through the Data API, so the rows returned are already
- * limited by Row Level Security to what the signed-in user may see:
+ * Every query goes through PostgREST, so the rows returned are already limited
+ * by Row Level Security to what the signed-in user may see:
  *   sales_rep   own scans, own outlet's team
  *   team_leader own outlet
  *   supervisor  whole zone
  *   admin       everything
+ *
+ * The query shapes are unchanged from the Neon build; only the client is
+ * different, because both expose the same PostgREST API.
  */
-import { neon, unwrap } from './neon.js';
+import { supabase, unwrap } from './supabase.js';
 
-/** The signed-in user's own scope (outlet / region / zone names). */
+/**
+ * The signed-in user's own scope (outlet / region / zone names).
+ *
+ * `v_my_profile` exposes `username` (the login) rather than an email: accounts
+ * are username-based, and the synthetic email is an implementation detail we
+ * never show.
+ */
 export async function fetchProfile() {
   const rows = unwrap(
-    await neon()
+    await supabase()
       .from('v_my_profile')
-      .select('user_id,email,full_name,phone,role,outlet_id,outlet_name,region_id,region_name,zone_id,zone_name,team_leader_name,active'),
+      .select('user_id,username,full_name,phone,role,outlet_id,outlet_name,region_id,region_name,zone_id,zone_name,team_leader_id,team_leader_name,active'),
   );
   return rows?.[0] ?? null;
 }
@@ -23,9 +32,9 @@ export async function fetchProfile() {
 /** Zone tree, with the current user's permissions already applied. */
 export async function fetchTree() {
   const [zones, regions, outlets] = await Promise.all([
-    neon().from('zones').select('id,name').order('name', { ascending: true }),
-    neon().from('regions').select('id,name,zone_id').order('name', { ascending: true }),
-    neon().from('outlets').select('id,name,region_id').order('name', { ascending: true }),
+    supabase().from('zones').select('id,name').order('name', { ascending: true }),
+    supabase().from('regions').select('id,name,zone_id').order('name', { ascending: true }),
+    supabase().from('outlets').select('id,name,region_id').order('name', { ascending: true }),
   ]);
   return {
     zones: unwrap(zones) ?? [],
@@ -41,7 +50,7 @@ export async function fetchTree() {
 export async function fetchRepCounts() {
   return (
     unwrap(
-      await neon()
+      await supabase()
         .from('v_rep_scan_counts')
         .select('user_id,full_name,username,role,active,outlet_id,outlet_name,region_id,region_name,zone_id,zone_name,team_leader_name,scans_today,scans_total')
         .order('scans_today', { ascending: false }),
@@ -52,7 +61,7 @@ export async function fetchRepCounts() {
 export async function fetchUsers() {
   return (
     unwrap(
-      await neon()
+      await supabase()
         .from('users')
         .select('id,username,full_name,phone,role,outlet_id,team_leader_id,active')
         .order('full_name', { ascending: true }),
@@ -60,22 +69,39 @@ export async function fetchUsers() {
   );
 }
 
-/** Recent scans from the flat reporting view (already scoped by RLS). */
+/**
+ * Recent scans from the flat reporting view (already scoped by RLS).
+ *
+ * Includes phone uploads: `v_scan_records` returns `sales_rep_name` for scans
+ * filed by a signed-in user, and `device_label` for scans uploaded by a phone,
+ * with `source` saying which.
+ */
 export async function fetchScans(limit = 200) {
   return (
     unwrap(
-      await neon()
+      await supabase()
         .from('v_scan_records')
-        .select('id,iccid,customer_name,primary_number,secondary_number,created_at,sales_rep_name,outlet_name,region_name,zone_name')
+        .select('id,iccid,customer_name,primary_number,secondary_number,created_at,sales_rep_id,sales_rep_name,device_id,device_label,outlet_name,region_name,zone_name,source')
         .order('created_at', { ascending: false })
         .limit(limit),
     ) ?? []
   );
 }
 
-/** Assigns a user's status/role/outlet/team leader. Admin or supervisor only. */
+/**
+ * Assigns a user's profile fields (name, phone, role, outlet, team leader).
+ * Admin, supervisor or team leader only — enforced by RLS and by the
+ * `users_guard_privileges` trigger, which blocks self-escalation.
+ *
+ * Note: `active` is NOT set here. Disabling must also ban the auth login, which
+ * needs the service role, so it goes through the admin-user function.
+ */
 export async function updateUser(userId, patch) {
-  unwrap(await neon().from('users').update(patch).eq('id', userId).select());
+  const { active, ...profilePatch } = patch ?? {};
+  if (active !== undefined) {
+    throw new Error('Enable or disable accounts from Users & Team, which also bans the login.');
+  }
+  unwrap(await supabase().from('users').update(profilePatch).eq('id', userId).select());
 }
 
 /** Dashboard totals for the current scope. */

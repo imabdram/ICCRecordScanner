@@ -1,12 +1,14 @@
 import { banner, h, mount, roleName, avatar } from '../ui.js';
-import { changePassword } from '../neon.js';
+import { changeOwnPassword } from '../supabase.js';
 import { fetchTree } from '../data.js';
 
 /**
  * Settings: the signed-in user's own details and password.
  *
- * Changing a password is deliberately self-service: Neon Auth verifies the
- * current password, so nobody (not even an admin) can set it for someone else.
+ * Changing a password is self-service. Supabase's updateUser() does not verify
+ * the current password, so `changeOwnPassword` re-authenticates first — that
+ * happens on the auth server, so it is a real check rather than a client-side
+ * formality.
  */
 export async function renderSettings(root, { profile }) {
   mount(root, h('div', { class: 'panel' }, h('h1', {}, 'Settings'), h('p', { class: 'muted' }, 'Loading…')));
@@ -42,7 +44,7 @@ export async function renderSettings(root, { profile }) {
         submit.disabled = true;
         submit.replaceChildren(h('span', { class: 'spin' }), document.createTextNode('Saving…'));
         try {
-          await changePassword({ currentPassword: current.value, newPassword: next.value });
+          await changeOwnPassword({ currentPassword: current.value, newPassword: next.value });
           status.replaceChildren(banner('ok', 'Password changed. Use it the next time you sign in.'));
           form.reset();
         } catch (error) {
@@ -77,18 +79,18 @@ export async function renderSettings(root, { profile }) {
         h(
           'div',
           { class: 'identity', style: { marginBottom: '14px' } },
-          avatar(profile.full_name, profile.email, 'avatar'),
-          h('div', {}, h('div', { class: 'cell-strong' }, profile.full_name || profile.email), h('div', { class: 'cell-sub' }, roleName(profile.role))),
+          avatar(profile.full_name, profile.username, 'avatar'),
+          h('div', {}, h('div', { class: 'cell-strong' }, profile.full_name || profile.username), h('div', { class: 'cell-sub' }, roleName(profile.role))),
         ),
         h(
           'div',
           { class: 'meta-grid' },
-          h('div', {}, h('div', { class: 'k' }, 'Email (sign-in)'), h('div', { class: 'v' }, profile.email)),
+          h('div', {}, h('div', { class: 'k' }, 'Username (sign-in)'), h('div', { class: 'v' }, profile.username)),
           h('div', {}, h('div', { class: 'k' }, 'Outlet'), h('div', { class: 'v' }, outletName)),
           h('div', {}, h('div', { class: 'k' }, 'Region'), h('div', { class: 'v' }, profile.region_name ?? '—')),
           h('div', {}, h('div', { class: 'k' }, 'Zone'), h('div', { class: 'v' }, profile.zone_name ?? '—')),
         ),
-        h('p', { class: 'cell-sub', style: { marginTop: '12px' } }, 'Your email is your sign-in identity and is managed by an administrator.'),
+        h('p', { class: 'cell-sub', style: { marginTop: '12px' } }, 'Your username is your sign-in identity and is managed by an administrator.'),
       ),
       h('section', { class: 'panel' }, h('h2', {}, 'Change password'), form),
     ),
