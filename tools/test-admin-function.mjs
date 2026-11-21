@@ -38,6 +38,17 @@ function makeQuery(table) {
   const st = { filters: [], head: false };
   const rows = () => db[table].filter((r) => st.filters.every(([c, v]) => r[c] === v));
 
+  // The function joins users -> outlets -> regions to work out scope. The fake
+  // flattens that into nested objects the way PostgREST would return them.
+  const decorate = (row) => {
+    if (!row || table !== 'users') return row;
+    const outlet = db.outlets.find((o) => o.id === row.outlet_id) ?? null;
+    return {
+      ...row,
+      outlets: outlet ? { id: outlet.id, regions: { zone_id: outlet.regions?.zone_id ?? null } } : null,
+    };
+  };
+
   const q = {
     select(_c, opts) { st.head = opts?.head === true; return q; },
     eq(c, v) { st.filters.push([c, v]); return q; },
@@ -45,12 +56,12 @@ function makeQuery(table) {
       const r = rows();
       return Promise.resolve(r.length > 1
         ? { data: null, error: { message: 'multiple rows' } }
-        : { data: r[0] ?? null, error: null });
+        : { data: decorate(r[0] ?? null), error: null });
     },
     single() {
       const r = rows();
       return Promise.resolve(r.length === 1
-        ? { data: r[0], error: null }
+        ? { data: decorate(r[0]), error: null }
         : { data: null, error: { message: r.length ? 'multiple rows' : 'no rows' } });
     },
     insert(row) {
@@ -304,6 +315,75 @@ r = await readJson(await call(handler, { action: 'bootstrap', username: 'someone
   { Authorization: 'Bearer t' }));
 ok('a missing service credential yields a clear error, not a crash',
    r.status === 500 && /service-role credential/i.test(r.body.error), JSON.stringify(r.body));
+
+// ---- scoped management: supervisors and team leaders ---------------------
+db.reset();
+await loadWith(ENV);
+handler = globalThis.__handler;
+
+// Admin bootstrap, then a leader and an outsider rep in another outlet.
+let boot = await readJson(await call(handler,
+  { action: 'bootstrap', username: 'boss', password: 'Adm1nPass!2026', full_name: 'Boss', outlet_id: 'outlet-bosaso' },
+  { Authorization: 'Bearer bootstrap-secret' }));
+ok('scoped: admin bootstrapped for the scope tests', boot.body.ok === true, JSON.stringify(boot.body));
+
+const BOSS = 'boss@sim.local';
+const mk = async (username, role, outlet) => {
+  const r = await readJson(await call(handler,
+    { action: 'create-user', username, password: 'Pass1234!', role, outlet_id: outlet },
+    { Authorization: `Bearer ${BOSS}` }));
+  return r.body?.user?.id;
+};
+const leaderId = await mk('lead1', 'team_leader', 'outlet-bosaso');
+// Same zone, DIFFERENT outlet: a team leader must be refused, a supervisor
+// must be allowed. That pair is what proves the two scopes are distinct.
+const farId = await mk('farrep', 'sales_rep', 'outlet-galkacyo');
+ok('scoped: admin created a team leader and a far-outlet rep',
+   !!leaderId && !!farId, `${leaderId} / ${farId}`);
+
+db.authUsers.push({ id: 'auth-lead1', email: 'lead1@sim.local', password: 'Pass1234!', banned: false });
+
+const CREATE_SAME = { action: 'create-user', username: 'repa', password: 'Pass1234!', role: 'sales_rep', outlet_id: 'outlet-bosaso' };
+let r2 = await readJson(await call(handler, CREATE_SAME, { Authorization: 'Bearer lead1@sim.local' }));
+ok('scoped: a team leader creates a rep in their own outlet', r2.status === 200, JSON.stringify(r2.body));
+const repInOutlet = r2.body?.user?.id;
+
+r2 = await readJson(await call(handler,
+  { action: 'create-user', username: 'other', password: 'Pass1234!', role: 'sales_rep', outlet_id: 'outlet-far' },
+  { Authorization: 'Bearer lead1@sim.local' }));
+ok('scoped: a team leader cannot create in another outlet',
+   r2.status === 403, JSON.stringify(r2.body));
+
+r2 = await readJson(await call(handler,
+  { action: 'create-user', username: 'super2', password: 'Pass1234!', role: 'admin', outlet_id: 'outlet-bosaso' },
+  { Authorization: 'Bearer lead1@sim.local' }));
+ok('scoped: a team leader cannot create an admin', r2.status === 403, JSON.stringify(r2.body));
+
+r2 = await readJson(await call(handler,
+  { action: 'set-password', user_id: repInOutlet, password: 'NewPass123!' },
+  { Authorization: 'Bearer lead1@sim.local' }));
+ok('scoped: a team leader sets a password for their own rep', r2.status === 200, JSON.stringify(r2.body));
+
+r2 = await readJson(await call(handler,
+  { action: 'set-password', user_id: farId, password: 'NewPass123!' },
+  { Authorization: 'Bearer lead1@sim.local' }));
+ok('scoped: a team leader cannot set a password outside their outlet',
+   r2.status === 403, JSON.stringify(r2.body));
+
+r2 = await readJson(await call(handler,
+  { action: 'set-active', user_id: farId, active: false },
+  { Authorization: 'Bearer lead1@sim.local' }));
+ok('scoped: a team leader cannot disable someone outside their outlet',
+   r2.status === 403, JSON.stringify(r2.body));
+
+// A supervisor covers the whole zone: both outlets above are in zone z2.
+db.authUsers.push({ id: 'auth-sup', email: 'sup@sim.local', password: 'x', banned: false });
+db.users.push({ id: 'u-sup', auth_user_id: 'auth-sup', username: 'sup', full_name: 'Sup',
+                role: 'supervisor', outlet_id: 'outlet-bosaso', team_leader_id: null, active: true });
+r2 = await readJson(await call(handler,
+  { action: 'set-password', user_id: farId, password: 'NewPass123!' },
+  { Authorization: 'Bearer sup@sim.local' }));
+ok('scoped: a supervisor manages anyone in their zone', r2.status === 200, JSON.stringify(r2.body));
 
 // ---------------------------------------------------------------- report
 console.log('\n' + '='.repeat(72));

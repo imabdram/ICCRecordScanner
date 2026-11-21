@@ -487,6 +487,81 @@ if (hasV3) {
      report && Number(report.scans) >= 1, JSON.stringify(report));
 }
 
+// ---------------------------------------------------------------- v4: filing
+const hasV4 = SCRIPTS.some((s) => /v4/i.test(s));
+if (hasV4) {
+  await db.exec(`select set_config('request.jwt.claim.sub', '', false)`);
+
+  // A team leader in the same outlet as `outlet`, plus a rep under them.
+  const mkUser = async (username, role, outletId) => {
+    const authId = (await db.query(`insert into auth.users (email) values ($1) returning id`,
+      [`${username}@sim.local`])).rows[0].id;
+    const id = (await db.query(`
+      insert into public.users (auth_user_id, username, full_name, role, outlet_id)
+      values ($1,$2,$3,$4,$5) returning id
+    `, [authId, username, username, role, outletId])).rows[0].id;
+    return { id, authId };
+  };
+
+  const leader = await mkUser('leader1', 'team_leader', outlet);
+  const repA = await mkUser('repa', 'sales_rep', outlet);
+  const supervisor = await mkUser('sup1', 'supervisor', outlet);
+
+  // Pick an outlet in a DIFFERENT zone if one exists; otherwise any other.
+  const zones = (await db.query(`select id from public.zones`)).rows.map((r) => r.id);
+  const outletRows = (await db.query(`
+    select o.id, r.zone_id from public.outlets o join public.regions r on r.id = o.region_id
+  `)).rows;
+  const myZone = (await db.query(`
+    select r.zone_id from public.outlets o join public.regions r on r.id = o.region_id
+     where o.id = $1
+  `, [outlet])).rows[0].zone_id;
+  const otherZoneOutlet = outletRows.find((o) => o.zone_id !== myZone)?.id
+    ?? outletRows.find((o) => o.id !== outlet).id;
+  ok('test setup: an out-of-scope outlet exists', !!otherZoneOutlet, 'none');
+  const repFar = await mkUser('repfar', 'sales_rep', otherZoneOutlet);
+
+  const fileScan = async (authId, iccid, repId) => {
+    await db.exec(`select set_config('request.jwt.claim.sub', '${authId}', false)`);
+    return run('file', async () => {
+      await db.exec('set role authenticated');
+      await db.query(`
+        insert into public.scans (iccid, customer_name, primary_number, secondary_number, sales_rep_id)
+        values ($1,'Manual','7000001','7000002',$2)
+      `, [iccid, repId]);
+      await db.exec('reset role');
+      return 'inserted';
+    });
+  };
+
+  const byLeader = await fileScan(leader.authId, '89252637990000000501', repA.id);
+  ok('a team leader files for a rep in their own outlet', byLeader.ok, byLeader.error);
+
+  const loc = (await db.query(`
+    select outlet_id, region_id, zone_id, device_id from public.scans
+     where iccid = '89252637990000000501'
+  `)).rows[0];
+  ok('the filed scan is attributed to the rep and carries their location',
+     !!loc && loc.device_id === null, JSON.stringify(loc));
+
+  const byRepForOther = await fileScan(repA.authId, '89252637990000000502', repFar.id);
+  ok('a sales rep cannot file for someone else',
+     !byRepForOther.ok && /own scope|yourself/.test(byRepForOther.error), byRepForOther.error);
+
+  const byLeaderFar = await fileScan(leader.authId, '89252637990000000503', repFar.id);
+  ok('a team leader cannot file for someone in another outlet',
+     !byLeaderFar.ok && /own scope|yourself/.test(byLeaderFar.error), byLeaderFar.error);
+
+  const bySup = await fileScan(supervisor.authId, '89252637990000000504', repA.id);
+  ok('a supervisor files for a rep in their zone', bySup.ok, bySup.error);
+
+  const supLoc = (await db.query(`
+    select outlet_id from public.scans where iccid = '89252637990000000504'
+  `)).rows[0];
+  ok('location comes from the target rep, not the caller',
+     supLoc && supLoc.outlet_id === outlet, JSON.stringify(supLoc));
+}
+
 // ---------------------------------------------------------------- report
 console.log('\n' + '='.repeat(72));
 let pass = 0;

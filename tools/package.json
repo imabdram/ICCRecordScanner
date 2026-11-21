@@ -1,0 +1,10 @@
+﻿{
+  "name": "icc-record-scanner-tools",
+  "private": true,
+  "type": "module",
+  "description": "Local verification harness: schema assertions (PGlite) and Edge Function tests (TypeScript). Not part of the deployed build.",
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.17",
+    "typescript": "^5.6.0"
+  }
+}

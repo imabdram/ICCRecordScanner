@@ -169,6 +169,66 @@ async function resolveOutlet(outletId: string | null | undefined) {
   return { outlet: data, error: null };
 }
 
+/** Where a given user sits in the tree, or null when they have no outlet. */
+async function scopeOf(userId: string) {
+  const { data, error } = await admin
+    .from('users')
+    .select('id, role, outlet_id, outlets(id, regions(zone_id))')
+    .eq('id', userId)
+    .maybeSingle();
+  if (error || !data) return null;
+  const outlet: any = (data as any).outlets;
+  return {
+    id: data.id,
+    role: data.role,
+    outlet_id: data.outlet_id,
+    zone_id: outlet?.regions?.zone_id ?? null,
+  };
+}
+
+/**
+ * May `caller` administer `target`?
+ *
+ *   admin        everyone
+ *   supervisor   their own zone
+ *   team leader  their own outlet
+ *
+ * Mirrors the database policies. The UI hides what a role cannot do; this is
+ * the check that actually holds, because a modified client can call the
+ * function directly.
+ */
+async function canAdminister(caller: any, targetId: string) {
+  if (caller.role === 'admin') return { ok: true, error: null };
+  if (caller.id === targetId) {
+    return { ok: false, error: 'Change your own account from Settings.' };
+  }
+
+  const target = await scopeOf(targetId);
+  if (!target) return { ok: false, error: 'User not found.' };
+
+  // Never let a non-admin touch an administrator.
+  if (target.role === 'admin') {
+    return { ok: false, error: 'Only an administrator can manage an administrator.' };
+  }
+
+  const mine = await scopeOf(caller.id);
+  if (!mine) return { ok: false, error: 'Your account has no outlet assigned.' };
+
+  if (caller.role === 'supervisor') {
+    const sameZone = mine.zone_id && mine.zone_id === target.zone_id;
+    return sameZone
+      ? { ok: true, error: null }
+      : { ok: false, error: 'That person is outside your zone.' };
+  }
+  if (caller.role === 'team_leader') {
+    const sameOutlet = mine.outlet_id && mine.outlet_id === target.outlet_id;
+    return sameOutlet
+      ? { ok: true, error: null }
+      : { ok: false, error: 'That person is outside your outlet.' };
+  }
+  return { ok: false, error: 'Your role cannot manage accounts.' };
+}
+
 /** Constant-time-ish comparison for the bootstrap token. */
 function tokensMatch(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
@@ -340,12 +400,15 @@ async function handleCreateUser(body: any, caller: any): Promise<Response> {
   return json({ ok: true, user: profile });
 }
 
-/** Admin: set someone else's password. This is the capability Neon could not give us. */
-async function handleSetPassword(body: any): Promise<Response> {
+/** Admin/supervisor/team leader: set someone's password, inside their scope. */
+async function handleSetPassword(body: any, caller: any): Promise<Response> {
   const userId = String(body.user_id ?? '');
   const password = String(body.password ?? '');
   if (!userId) return fail('user_id is required.', 400);
   if (!validPassword(password)) return fail('Password must be at least 8 characters.', 400);
+
+  const scope = await canAdminister(caller, userId);
+  if (!scope.ok) return fail(scope.error!, 403);
 
   const { data: target, error: targetError } = await admin
     .from('users')
@@ -361,12 +424,15 @@ async function handleSetPassword(body: any): Promise<Response> {
   return json({ ok: true, username: target.username });
 }
 
-/** Admin: enable or disable a login. Disabling also blocks sign-in. */
+/** Admin/supervisor/team leader: enable or disable a login, inside their scope. */
 async function handleSetActive(body: any, caller: any): Promise<Response> {
   const userId = String(body.user_id ?? '');
   const active = Boolean(body.active);
   if (!userId) return fail('user_id is required.', 400);
   if (userId === caller.id) return fail('You cannot disable your own account.', 400);
+
+  const scope = await canAdminister(caller, userId);
+  if (!scope.ok) return fail(scope.error!, 403);
 
   const { data: target, error: targetError } = await admin
     .from('users')
@@ -429,18 +495,18 @@ Deno.serve(async (req: Request) => {
   try {
     if (action === 'bootstrap') return await handleBootstrap(body, req);
 
-    // Everything else needs a signed-in admin.
+    // Everything else needs a signed-in user who may manage accounts.
     const { profile, reason } = await callerProfile(req);
     if (!profile) return fail(`Not signed in${reason ? ` (${reason})` : ''}.`, 401);
-    if (profile.role !== 'admin') {
-      return fail('Only an administrator can do that.', 403);
+    if (!['admin', 'supervisor', 'team_leader'].includes(profile.role)) {
+      return fail('Your role cannot manage accounts.', 403);
     }
 
     switch (action) {
       case 'create-user':
         return await handleCreateUser(body, profile);
       case 'set-password':
-        return await handleSetPassword(body);
+        return await handleSetPassword(body, profile);
       case 'set-active':
         return await handleSetActive(body, profile);
       default:

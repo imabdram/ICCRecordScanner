@@ -31,8 +31,10 @@ export async function renderDashboard(root, { profile }) {
     }));
 
     const totals = summarise(labelled);
+    // Team leaders scan too, so they share the leaderboard with reps.
+    // Supervisors are excluded: they manage, they do not record.
     const reps = labelled
-      .filter((r) => r.role === 'sales_rep')
+      .filter((r) => r.role === 'sales_rep' || r.role === 'team_leader')
       .sort((a, b) => Number(b.scans_total) - Number(a.scans_total));
     const leaders = labelled.filter((r) => r.role === 'team_leader');
     const supervisors = labelled.filter((r) => r.role === 'supervisor');

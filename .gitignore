@@ -83,3 +83,8 @@ _tools/node_modules/
 *.iml
 .vscode/
 Thumbs.db
+
+# Test harness build scratch
+_tools/.fnbuild/
+tools/.fnbuild/
+tools/node_modules/
