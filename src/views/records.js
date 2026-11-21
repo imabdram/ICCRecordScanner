@@ -139,6 +139,26 @@ export async function renderRecords(root, { profile }) {
   }
 }
 
+/**
+ * Phone number rules, mirroring the database constraints.
+ *   primary : 71 followed by 7 digits (9 total) -- enforced by schema_v6
+ *   backup  : any 7-12 digits
+ * The database is the authority; these just produce a readable message instead
+ * of a constraint violation.
+ */
+const PRIMARY_RE = /^71[0-9]{7}$/;
+const SECONDARY_RE = /^[0-9]{7,12}$/;
+
+function checkNumbers(primary, secondary) {
+  if (!PRIMARY_RE.test(primary)) {
+    return 'Primary number must be 71 followed by 7 digits (for example 712345678).';
+  }
+  if (!SECONDARY_RE.test(secondary)) {
+    return 'Backup number must be 7 to 12 digits.';
+  }
+  return null;
+}
+
 /* ========================================================================== */
 /*  Add record by hand                                                        */
 /* ========================================================================== */
@@ -198,6 +218,12 @@ async function openAddRecord({ profile, onSaved }) {
           const cleanIccid = digits(iccid.value);
           if (cleanIccid.length < 18 || cleanIccid.length > 22) {
             status.replaceChildren(banner('error', 'ICCID must be 18-22 digits.'));
+            submit.disabled = false;
+            return;
+          }
+          const numberError = checkNumbers(digits(primary.value), digits(secondary.value));
+          if (numberError) {
+            status.replaceChildren(banner('error', numberError));
             submit.disabled = false;
             return;
           }
@@ -300,6 +326,12 @@ function openEditScan(scan, { onSaved }) {
           status.replaceChildren();
           submit.disabled = true;
           const digits = (v) => String(v ?? '').replace(/\D/g, '');
+          const numberError = checkNumbers(digits(primary.value), digits(secondary.value));
+          if (numberError) {
+            status.replaceChildren(banner('error', numberError));
+            submit.disabled = false;
+            return;
+          }
           try {
             unwrap(
               await supabase()
