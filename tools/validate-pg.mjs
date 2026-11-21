@@ -47,6 +47,16 @@ await db.exec(`
 
   grant usage on schema public to anon, authenticated, service_role;
   grant usage on schema auth  to anon, authenticated, service_role;
+
+  -- pgcrypto shims. PGlite cannot load extensions, and v3 uses
+  -- extensions.crypt()/gen_salt() for PIN hashing. These stand in so the SQL
+  -- still executes; they are NOT bcrypt. Hashing itself is not what is under
+  -- test here -- the roster, attribution and rejection rules are.
+  create schema if not exists extensions;
+  create or replace function extensions.gen_salt(kind text) returns text
+    language sql as $$ select '$2a$shim' $$;
+  create or replace function extensions.crypt(pw text, salt text) returns text
+    language sql as $$ select 'bcrypt-shim:' || pw || ':' || salt $$;
 `);
 
 console.log('Postgres version:', (await db.query('select version() as v')).rows[0].v.slice(0, 40));
@@ -313,6 +323,10 @@ async function run(label, fn) {
   } catch (e) {
     // PGlite errors carry a huge `query` field; only keep the message.
     return { ok: false, error: String(e.message || e).split('\n')[0] };
+  } finally {
+    // A check that changes role and then throws would otherwise leave the whole
+    // suite running as that role, silently filtering every later query by RLS.
+    try { await db.exec('reset role'); } catch { /* already reset */ }
   }
 }
 
@@ -358,6 +372,120 @@ const repUpload = await run('rep escalate', async () => {
 });
 ok('a wrong device key is refused', !repUpload.ok && /Unknown or disabled device/.test(repUpload.error),
    repUpload.ok ? 'ACCEPTED (bad)' : repUpload.error);
+
+// ---------------------------------------------------------------- v3: rep PINs
+// Runs only when schema_v3_reps.sql was passed in.
+const hasV3 = SCRIPTS.some((s) => /v3/i.test(s));
+if (hasV3) {
+  const cols = (await db.query(`
+    select column_name from information_schema.columns
+    where table_schema='public' and table_name='users' and column_name='pin_hash'
+  `)).rows;
+  ok('v3 added users.pin_hash', cols.length === 1, JSON.stringify(cols));
+
+  const oneOwner = (await db.query(`
+    select count(*)::int as n from pg_constraint where conname='scans_one_owner'
+  `)).rows[0].n;
+  ok('v3 dropped the v2 scans_one_owner constraint', oneOwner === 0, `${oneOwner} still present`);
+
+  // The admin sets a PIN; the hash must not be the plain PIN.
+  await db.exec(`select set_config('request.jwt.claim.sub', '${authUser2}', false)`);
+  const adminPin = await run('set pin as rep', async () => {
+    await db.exec('set role authenticated');
+    const r = await db.query(`select public.set_rep_pin($1,'1234') as r`, [rep2]);
+    await db.exec('reset role');
+    return r.rows[0].r;
+  });
+  ok('a non-admin cannot set a PIN', !adminPin.ok && /Only an administrator/.test(adminPin.error),
+     adminPin.ok ? 'ALLOWED (bad)' : adminPin.error);
+
+  // Promote rep2 to admin for the PIN test. Must run with NO user context:
+  // users_guard_privileges correctly blocks changing your own role, which is
+  // exactly what would happen if the JWT claim were still set to rep2.
+  await db.exec(`select set_config('request.jwt.claim.sub', '', false)`);
+  await db.query(`update public.users set role='admin' where id=$1`, [rep2]);
+  await db.exec(`select set_config('request.jwt.claim.sub', '${authUser2}', false)`);
+  const setPin = await run('set pin', async () => {
+    await db.exec('set role authenticated');
+    const r = await db.query(`select public.set_rep_pin($1,'4321') as r`, [rep2]);
+    await db.exec('reset role');
+    return r.rows[0].r;
+  });
+  ok('an admin sets a rep PIN', setPin.ok, setPin.ok ? JSON.stringify(setPin.value) : setPin.error);
+
+  const pinHash = (await db.query(`select pin_hash from public.users where id=$1`, [rep2])).rows[0].pin_hash;
+  ok('the stored PIN is hashed, not plaintext',
+     !!pinHash && pinHash !== '4321', String(pinHash).slice(0, 24));
+
+  const badPin = await run('bad pin', async () => {
+    await db.exec('set role authenticated');
+    const r = await db.query(`select public.set_rep_pin($1,'ab') as r`, [rep2]);
+    await db.exec('reset role');
+    return r.rows[0].r;
+  });
+  ok('a non-numeric PIN is refused', !badPin.ok && /4 to 8 digits/.test(badPin.error), badPin.error);
+
+  // Roster: the phone asks who works at its outlet.
+  const roster = (await db.query(`select public.device_roster($1::jsonb) as r`,
+    [JSON.stringify({ device_key: reg.device_key })])).rows[0].r;
+  ok('device_roster returns the reps of the device outlet',
+     Array.isArray(roster?.reps) && roster.reps.some((x) => x.id === rep2),
+     JSON.stringify(roster?.reps?.map((x) => x.username)));
+  ok('the roster carries hashes so a PIN can be checked offline',
+     roster.reps.some((x) => x.id === rep2 && x.has_pin && x.pin_hash),
+     'no pin_hash in roster');
+  ok('the roster refuses an unknown device key',
+     await (async () => {
+       try { await db.query(`select public.device_roster('{"device_key":"nope"}'::jsonb)`); return false; }
+       catch { return true; }
+     })(), '');
+
+  // Attribution: a scan now records BOTH the rep and the device.
+  const withRep = JSON.stringify({
+    device_key: reg.device_key,
+    scans: [{ iccid: '89252637990000000301', customer_name: 'Ali', primary_number: '615555101',
+              secondary_number: '615555102', sales_rep_id: rep2 }],
+  });
+  const upRep = (await db.query(`select public.upload_scans($1::jsonb) as r`, [withRep])).rows[0].r;
+  ok('upload_scans accepts a rep from the device outlet', upRep.accepted.length === 1, JSON.stringify(upRep));
+
+  const attributed = (await db.query(`
+    select sales_rep_id, device_id from public.scans where iccid='89252637990000000301'
+  `)).rows[0];
+  ok('the scan records both the person and the phone',
+     attributed.sales_rep_id === rep2 && attributed.device_id !== null, JSON.stringify(attributed));
+
+  // A rep from another outlet must be refused.
+  const allOutlets = (await db.query(`select id from public.outlets`)).rows;
+  const otherOutlet = allOutlets.map((o) => o.id).find((id) => id !== outlet);
+  if (!otherOutlet) {
+    throw new Error(`test setup: no distinct outlet (total=${allOutlets.length}, current=${outlet})`);
+  }
+  const outsider = (await db.query(`
+    insert into auth.users (email) values ('outsider@sim.local') returning id
+  `)).rows[0].id;
+  const outsiderId = (await db.query(`
+    insert into public.users (auth_user_id, username, full_name, role, outlet_id)
+    values ($1,'outsider','Outsider','sales_rep',$2) returning id
+  `, [outsider, otherOutlet])).rows[0].id;
+
+  const crossOutlet = JSON.stringify({
+    device_key: reg.device_key,
+    scans: [{ iccid: '89252637990000000302', customer_name: 'X', primary_number: '615555103',
+              secondary_number: '615555104', sales_rep_id: outsiderId }],
+  });
+  const upCross = (await db.query(`select public.upload_scans($1::jsonb) as r`, [crossOutlet])).rows[0].r;
+  ok('a rep from another outlet is rejected',
+     upCross.accepted.length === 0 && upCross.rejected.length === 1,
+     JSON.stringify(upCross));
+
+  // Per-rep report.
+  const report = (await db.query(`
+    select full_name, scans from public.v_rep_scan_report where user_id=$1
+  `, [rep2])).rows[0];
+  ok("v_rep_scan_report counts the rep's scans",
+     report && Number(report.scans) >= 1, JSON.stringify(report));
+}
 
 // ---------------------------------------------------------------- report
 console.log('\n' + '='.repeat(72));
