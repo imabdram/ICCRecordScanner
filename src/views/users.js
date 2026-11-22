@@ -1,5 +1,6 @@
 import { avatar, banner, h, icon, mount, pill, roleName, rolePill, skeletonPanel, switchToggle, table } from '../ui.js';
 import { callAdmin } from '../supabase.js';
+import { filterUsers } from '../filters.js';
 import { fetchTree, fetchUsers, updateUser } from '../data.js';
 
 /**
@@ -33,14 +34,66 @@ export async function renderUsers(root, { profile }) {
     const userName = (id) => users.find((u) => u.id === id)?.full_name ?? '—';
     const status = h('div', { style: { marginBottom: '14px' } });
 
-    const term = h('input', { type: 'search', placeholder: 'Search by name, email or outlet…' });
+    const term = h('input', { type: 'search', placeholder: 'Search by name, username or outlet…' });
     const listSlot = h('div', {});
+    const countSlot = h('span', { class: 'hint' }, '');
+
+    // ---- filters ------------------------------------------------------------
+    // Applied in the browser over the rows RLS already allowed, so the outlet
+    // list can only contain outlets this viewer can see.
+    const filterState = { role: '', status: '', outlet: '' };
+
+    const outletChoices = [...new Set(users.map((u) => u.outlet_id).filter(Boolean))]
+      .map((id) => ({ id, name: outletName(id) }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    const roleFilter = h(
+      'select',
+      { 'aria-label': 'Role' },
+      h('option', { value: '' }, 'All roles'),
+      h('option', { value: 'admin' }, 'Administrator'),
+      h('option', { value: 'supervisor' }, 'Supervisor'),
+      h('option', { value: 'team_leader' }, 'Team Leader'),
+      h('option', { value: 'sales_rep' }, 'Sales Rep'),
+    );
+    const statusFilter = h(
+      'select',
+      { 'aria-label': 'Status' },
+      h('option', { value: '' }, 'Any status'),
+      h('option', { value: 'active' }, 'Active'),
+      h('option', { value: 'disabled' }, 'Disabled'),
+    );
+    const outletFilter = h(
+      'select',
+      { 'aria-label': 'Outlet' },
+      h('option', { value: '' }, 'All outlets'),
+      ...outletChoices.map((o) => h('option', { value: o.id }, o.name)),
+    );
+
+    const applyUserFilters = (rows) =>
+      filterUsers(rows, { ...filterState, query: term.value, outletName });
+
+    const resetUserFilters = () => {
+      filterState.role = filterState.status = filterState.outlet = '';
+      roleFilter.value = statusFilter.value = outletFilter.value = '';
+      term.value = '';
+      drawList(listUsers());
+    };
+
+    const onUserFilter = () => {
+      filterState.role = roleFilter.value;
+      filterState.status = statusFilter.value;
+      filterState.outlet = outletFilter.value;
+      drawList(listUsers());
+    };
 
     const drawList = (rows) => {
-      const q = term.value.trim().toLowerCase();
-      const filtered = q
-        ? rows.filter((u) => [u.full_name, u.username, outletName(u.outlet_id)].some((v) => String(v ?? '').toLowerCase().includes(q)))
-        : rows;
+      const filtered = applyUserFilters(rows);
+      const active = [filterState.role, filterState.status, filterState.outlet].filter(Boolean).length;
+      countSlot.textContent =
+        filtered.length === rows.length
+          ? `${rows.length} ${rows.length === 1 ? 'person' : 'people'}`
+          : `${filtered.length} of ${rows.length} · ${active} filter(s)`;
       mount(
         listSlot,
         table(
@@ -116,7 +169,9 @@ export async function renderUsers(root, { profile }) {
             },
           ],
           filtered,
-          q ? `No people match “${term.value.trim()}”.` : 'No users in your scope yet.',
+          rows.length === 0
+            ? 'No users in your scope yet.'
+            : `No people match these filters (${filtered.length} of ${rows.length} shown).`,
         ),
       );
     };
@@ -126,7 +181,10 @@ export async function renderUsers(root, { profile }) {
       listUsers = () => fresh;
       drawList(fresh);
     };
-    term.addEventListener('input', () => drawList(users));
+    term.addEventListener('input', () => drawList(listUsers()));
+    roleFilter.addEventListener('change', onUserFilter);
+    statusFilter.addEventListener('change', onUserFilter);
+    outletFilter.addEventListener('change', onUserFilter);
 
     mount(
       root,
@@ -165,7 +223,20 @@ export async function renderUsers(root, { profile }) {
         h(
           'section',
           { class: 'panel' },
-          h('div', { class: 'toolbar' }, h('div', { class: 'search' }, icon('search', 16, 'ico', true), term)),
+          h(
+            'div',
+            { class: 'toolbar' },
+            h('div', { class: 'search' }, icon('search', 16, 'ico', true), term),
+            countSlot,
+          ),
+          h(
+            'div',
+            { class: 'filters' },
+            h('label', { class: 'filter' }, h('span', {}, 'Role'), roleFilter),
+            h('label', { class: 'filter' }, h('span', {}, 'Status'), statusFilter),
+            h('label', { class: 'filter' }, h('span', {}, 'Outlet'), outletFilter),
+            h('button', { class: 'btn secondary sm', type: 'button', onclick: resetUserFilters }, 'Reset filters'),
+          ),
           listSlot,
         ),
       ),

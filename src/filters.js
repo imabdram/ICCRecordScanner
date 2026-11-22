@@ -22,8 +22,7 @@ function endOfDay(isoDate) {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
-export function filterScans(rows, { from = '', to = '', rep = '', outlet = '', query = '' } = {}) {
-  const fromDate = from ? startOfDay(from) : null;
+export function filterScans(rows, { from = '', to = '', rep = '', outlet = '', query = '' } = {}) {  const fromDate = from ? startOfDay(from) : null;
   const toDate = to ? endOfDay(to) : null;
   const q = String(query ?? '').trim().toLowerCase();
 
@@ -53,6 +52,35 @@ export function filterScans(rows, { from = '', to = '', rep = '', outlet = '', q
       if (!hay.includes(q)) return false;
     }
 
+    return true;
+  });
+}
+
+/**
+ * Filtering for the Users & Team table.
+ *
+ * `outletName(id)` is injected so this module stays free of data lookups; the
+ * caller passes its own outlet lookup (which already respects RLS).
+ */
+export function filterUsers(
+  rows,
+  { role = '', status = '', outlet = '', query = '', outletName = () => '' } = {},
+) {
+  const q = String(query ?? '').trim().toLowerCase();
+
+  return (rows ?? []).filter((u) => {
+    if (role && u.role !== role) return false;
+    if (status === 'active' && !u.active) return false;
+    if (status === 'disabled' && u.active) return false;
+    if (outlet && u.outlet_id !== outlet) return false;
+
+    if (q) {
+      const hay = [u.full_name, u.username, outletName(u.outlet_id)]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
     return true;
   });
 }
