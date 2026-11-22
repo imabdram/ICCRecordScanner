@@ -1,4 +1,4 @@
-import { $, avatar, banner, h, icon, mount } from './ui.js';
+﻿import { $, avatar, banner, h, icon, mount } from './ui.js';
 import { SUPABASE_URL } from './config.supabase.js';
 import { getSession, isConfigured, signOut, usernameFrom } from './supabase.js';
 import { fetchProfile } from './data.js';
@@ -6,14 +6,23 @@ import { renderLogin } from './views/login.js';
 import { renderDashboard } from './views/dashboard.js';
 import { renderRecords } from './views/records.js';
 import { renderUsers } from './views/users.js';
+import { renderAudit } from './views/audit.js';
 import { renderSettings } from './views/settings.js';
 
 const root = $('#app');
 
+// `roles` limits a nav entry to the roles that can actually read the page.
+// Sales reps have no audit page: their RLS policy returns no rows anyway.
 const NAV = [
-
   { id: 'dashboard', label: 'Dashboard', icon: 'dashboard', render: renderDashboard },
   { id: 'records', label: 'Scan Records', icon: 'records', render: renderRecords },
+  {
+    id: 'audit',
+    label: 'Deleted records',
+    icon: 'trash',
+    render: renderAudit,
+    roles: ['admin', 'supervisor', 'team_leader'],
+  },
   { id: 'users', label: 'Users & Team', icon: 'users', render: renderUsers },
   { id: 'settings', label: 'Settings', icon: 'key', render: renderSettings },
 ];
@@ -22,7 +31,7 @@ const LOADING = () =>
   h(
     'div',
     { class: 'content' },
-    h('div', { class: 'panel' }, h('p', { class: 'muted' }, 'Loading…')),
+    h('div', { class: 'panel' }, h('p', { class: 'muted' }, 'Loadingâ€¦')),
   );
 
 async function start() {
@@ -35,7 +44,7 @@ async function start() {
         banner(
           'error',
           'VITE_SUPABASE_URL / VITE_SUPABASE_PUBLISHABLE_KEY are missing from this build. ' +
-            'Set them in .env.local (local) or Project Settings → Environment Variables (Vercel), then rebuild.',
+            'Set them in .env.local (local) or Project Settings â†’ Environment Variables (Vercel), then rebuild.',
         ),
         h('button', { class: 'btn', onclick: () => window.location.reload() }, 'Retry'),
       ),
@@ -88,6 +97,8 @@ async function boot() {
     return;
   }
 
+  const visibleNav = NAV.filter((n) => !n.roles || n.roles.includes(profile.role));
+
   const sidebar = h('aside', { class: 'sidebar', id: 'sidebar' });
   const content = h('main', { class: 'content' });
   const scrim = h('div', { class: 'scrim', hidden: true, onclick: () => closeDrawer() });
@@ -113,15 +124,15 @@ async function boot() {
       b.setAttribute('aria-current', on ? 'page' : 'false');
     }
     closeDrawer();
-    const entry = NAV.find((n) => n.id === view) ?? NAV[0];
-    document.title = `${entry.label} · SIM Management System`;
-    mount(content, h('div', { class: 'panel' }, h('p', { class: 'muted' }, 'Loading…')));
+    const entry = visibleNav.find((n) => n.id === view) ?? visibleNav[0];
+    document.title = `${entry.label} Â· SIM Management System`;
+    mount(content, h('div', { class: 'panel' }, h('p', { class: 'muted' }, 'Loadingâ€¦')));
     entry.render(content, { profile, go });
     window.scrollTo({ top: 0 });
   };
 
   const viewFromHash = () => (window.location.hash || '#dashboard').slice(1);
-  const normalise = (view) => (NAV.some((n) => n.id === view) ? view : 'dashboard');
+  const normalise = (view) => (visibleNav.some((n) => n.id === view) ? view : 'dashboard');
 
   // Navigation is URL-driven (#dashboard, #records, #users), so Back/Forward and
   // deep links work. renderView is idempotent, so any path may call it safely.
@@ -153,14 +164,14 @@ async function boot() {
         'div',
         { style: { minWidth: '0' } },
         h('div', { class: 'name' }, profile.full_name || profile.username),
-        h('div', { class: 'meta' }, `${profile.outlet_name ?? 'No outlet'} · ${profile.region_name ?? '—'}`),
+        h('div', { class: 'meta' }, `${profile.outlet_name ?? 'No outlet'} Â· ${profile.region_name ?? 'â€”'}`),
       ),
     ),
     h(
       'nav',
       { 'aria-label': 'Primary' },
       h('div', { class: 'nav-title' }, 'Workspace'),
-      ...NAV.map((n) =>
+      ...visibleNav.map((n) =>
         h(
           'button',
           { dataset: { view: n.id }, onclick: () => go(n.id) },
@@ -214,7 +225,7 @@ async function boot() {
   // Note: creating a user no longer signs the new account in. Accounts are made
   // by the admin-user Edge Function with the service role, so the administrator
   // keeps their own session. (The Neon build used signUp, which did switch the
-  // browser to the new user — that whole workaround is gone.)
+  // browser to the new user â€” that whole workaround is gone.)
 }
 
 async function logout() {
@@ -227,7 +238,7 @@ async function logout() {
     (error) => ({ ok: false, error }),
   );
   window.location.hash = '#dashboard';
-  mount(root, h('div', { class: 'auth-wrap' }, h('div', { class: 'panel narrow' }, h('p', { class: 'muted' }, 'Signing out…'))));
+  mount(root, h('div', { class: 'auth-wrap' }, h('div', { class: 'panel narrow' }, h('p', { class: 'muted' }, 'Signing outâ€¦'))));
 
   const outcome = await Promise.race([
     pending,
@@ -260,3 +271,4 @@ start().catch((error) => {
 });
 
 export { LOADING };
+

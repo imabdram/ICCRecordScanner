@@ -88,6 +88,25 @@ export async function fetchScans(limit = 200) {
 }
 
 /**
+ * Deleted scans, newest deletion first.
+ *
+ * Written by the scans_audit_delete trigger. Read-only by design: there is no
+ * insert/update/delete policy, so nobody can rewrite history through the API.
+ * RLS: admin anywhere, supervisor their zone, team leader their outlet.
+ */
+export async function fetchDeletions(limit = 300) {
+  return (
+    unwrap(
+      await supabase()
+        .from('scan_deletions')
+        .select('id,scan_id,iccid,customer_name,primary_number,secondary_number,sales_rep_name,outlet_name,scan_created_at,deleted_at,deleted_by_username')
+        .order('deleted_at', { ascending: false })
+        .limit(limit),
+    ) ?? []
+  );
+}
+
+/**
  * Deletes a scan.
  *
  * Who may is enforced by the `scans_delete` policy: admin anywhere, supervisor
