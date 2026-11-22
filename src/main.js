@@ -22,6 +22,8 @@ const NAV = [
     icon: 'trash',
     render: renderAudit,
     roles: ['admin', 'supervisor', 'team_leader'],
+    // Reachable from Scan Records, not the sidebar: it is a rare lookup.
+    hidden: true,
   },
   { id: 'users', label: 'Users & Team', icon: 'users', render: renderUsers },
   { id: 'settings', label: 'Settings', icon: 'key', render: renderSettings },
@@ -171,7 +173,7 @@ async function boot() {
       'nav',
       { 'aria-label': 'Primary' },
       h('div', { class: 'nav-title' }, 'Workspace'),
-      ...visibleNav.map((n) =>
+      ...visibleNav.filter((n) => !n.hidden).map((n) =>
         h(
           'button',
           { dataset: { view: n.id }, onclick: () => go(n.id) },
@@ -271,4 +273,5 @@ start().catch((error) => {
 });
 
 export { LOADING };
+
 
