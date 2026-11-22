@@ -49,6 +49,30 @@ create index if not exists scan_deletions_iccid_idx
   on public.scan_deletions (iccid);
 
 -- -----------------------------------------------------------------------------
+-- Repair pass.
+--
+-- `create table if not exists` does nothing when a partial version of this table
+-- already exists, which leaves the columns missing and the page failing with
+-- "column does not exist". Adding each column individually makes this script
+-- safe to re-run against a half-created table.
+-- -----------------------------------------------------------------------------
+alter table public.scan_deletions add column if not exists scan_id            uuid;
+alter table public.scan_deletions add column if not exists iccid              text;
+alter table public.scan_deletions add column if not exists customer_name      text;
+alter table public.scan_deletions add column if not exists primary_number     text;
+alter table public.scan_deletions add column if not exists secondary_number   text;
+alter table public.scan_deletions add column if not exists sales_rep_id       uuid;
+alter table public.scan_deletions add column if not exists sales_rep_name     text;
+alter table public.scan_deletions add column if not exists outlet_id          uuid;
+alter table public.scan_deletions add column if not exists outlet_name        text;
+alter table public.scan_deletions add column if not exists region_id          uuid;
+alter table public.scan_deletions add column if not exists zone_id            uuid;
+alter table public.scan_deletions add column if not exists scan_created_at    timestamptz;
+alter table public.scan_deletions add column if not exists deleted_at         timestamptz not null default now();
+alter table public.scan_deletions add column if not exists deleted_by         uuid;
+alter table public.scan_deletions add column if not exists deleted_by_username text;
+
+-- -----------------------------------------------------------------------------
 -- Trigger: snapshot the row before it disappears.
 --
 -- SECURITY DEFINER so the caller needs no INSERT grant on the audit table, and
