@@ -88,6 +88,17 @@ export async function fetchScans(limit = 200) {
 }
 
 /**
+ * Deletes a scan.
+ *
+ * Who may is enforced by the `scans_delete` policy: admin anywhere, supervisor
+ * in their zone, team leader in their outlet. A sales rep cannot delete at all,
+ * including their own rows -- history is the office's to remove.
+ */
+export async function deleteScan(scanId) {
+  unwrap(await supabase().from('scans').delete().eq('id', scanId));
+}
+
+/**
  * Assigns a user's profile fields (name, phone, role, outlet, team leader).
  * Admin, supervisor or team leader only — enforced by RLS and by the
  * `users_guard_privileges` trigger, which blocks self-escalation.

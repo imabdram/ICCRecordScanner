@@ -649,6 +649,9 @@ svg.ico > * {
 .icon-btn.danger { width: 30px; height: 30px; color: var(--muted); }
 .icon-btn.danger:hover { background: var(--red-soft); color: var(--red-600); border-color: #f6c9cd; }
 
+/* Edit + delete sitting side by side in a table row */
+.row-actions { display: flex; gap: 4px; justify-content: flex-end; }
+
 /* password section in the edit dialog */
 .password-box {
   display: flex;

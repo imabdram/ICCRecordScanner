@@ -1,10 +1,13 @@
-﻿import { banner, card, fmtDate, fmtTime, h, icon, mount, roleName, skeletonPanel, table } from '../ui.js';
-import { fetchScans, fetchUsers } from '../data.js';
+import { banner, card, fmtDate, fmtTime, h, icon, mount, roleName, skeletonPanel, table } from '../ui.js';
+import { deleteScan, fetchScans, fetchUsers } from '../data.js';
 import { filterScans } from '../filters.js';
 import { supabase, unwrap } from '../supabase.js';
 
 /** Recent scans, newest first, filtered by RLS for this user's role. */
 export async function renderRecords(root, { profile }) {
+  // The database policy decides who may delete; this only hides a control that
+  // would fail anyway. Sales reps cannot delete, not even their own scans.
+  const canDelete = ['admin', 'supervisor', 'team_leader'].includes(profile.role);
   mount(root, h('div', {}, skeletonPanel(6)));
 
   try {
@@ -107,15 +110,32 @@ export async function renderRecords(root, { profile }) {
               label: '',
               value: (s) =>
                 h(
-                  'button',
-                  {
-                    class: 'icon-btn',
-                    type: 'button',
-                    title: `Edit ${s.iccid}`,
-                    'aria-label': `Edit ${s.iccid}`,
-                    onclick: () => openEditScan(s, { onSaved: () => renderRecords(root, { profile }) }),
-                  },
-                  icon('edit', 16, 'ico', true),
+                  'div',
+                  { class: 'row-actions' },
+                  h(
+                    'button',
+                    {
+                      class: 'icon-btn',
+                      type: 'button',
+                      title: `Edit ${s.iccid}`,
+                      'aria-label': `Edit ${s.iccid}`,
+                      onclick: () => openEditScan(s, { onSaved: () => renderRecords(root, { profile }) }),
+                    },
+                    icon('edit', 16, 'ico', true),
+                  ),
+                  canDelete
+                    ? h(
+                        'button',
+                        {
+                          class: 'icon-btn danger',
+                          type: 'button',
+                          title: `Delete ${s.iccid}`,
+                          'aria-label': `Delete ${s.iccid}`,
+                          onclick: () => confirmDeleteScan(s, { root, profile }),
+                        },
+                        icon('trash', 16, 'ico', true),
+                      )
+                    : null,
                 ),
             },
           ],
@@ -356,6 +376,79 @@ async function openAddRecord({ profile, onSaved }) {
   document.addEventListener('keydown', onKey);
   document.body.append(overlay);
   iccid.focus();
+}
+
+/* ========================================================================== */
+/*  Delete a scan                                                             */
+/* ========================================================================== */
+
+/**
+ * Removes a scan for everyone.
+ *
+ * The `scans_delete` policy is the real gate (admin anywhere, supervisor in
+ * their zone, team leader in their outlet); this dialog exists so a misclick
+ * cannot destroy a record. A sales rep never sees the button.
+ */
+function confirmDeleteScan(scan, { root, profile }) {
+  const status = h('div', {});
+  const deleteBtn = h(
+    'button',
+    { class: 'btn', type: 'button', style: { background: 'var(--red, #d93025)' } },
+    'Delete record',
+  );
+
+  const dialog = h(
+    'div',
+    { class: 'modal', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'del-title' },
+    h(
+      'div',
+      { class: 'modal-head' },
+      h(
+        'div',
+        {},
+        h('h2', { id: 'del-title' }, 'Delete this record?'),
+        h('p', { class: 'cell-sub mono' }, scan.iccid),
+      ),
+    ),
+    h(
+      'div',
+      { style: { padding: '4px 2px 10px' } },
+      status,
+      h('p', { style: { margin: '0 0 6px' } },
+        `${scan.customer_name} · recorded by ${scan.sales_rep_name ?? 'unknown'}`),
+      h('p', { class: 'cell-sub', style: { margin: 0 } },
+        'Removed for everyone, including reports. This cannot be undone.'),
+    ),
+    h(
+      'div',
+      { class: 'modal-actions' },
+      h('button', { class: 'btn secondary', type: 'button', onclick: () => close() }, 'Cancel'),
+      deleteBtn,
+    ),
+  );
+
+  const overlay = h('div', { class: 'modal-overlay', onclick: (e) => e.target === overlay && close() }, dialog);
+  const onKey = (e) => { if (e.key === 'Escape') close(); };
+  function close() {
+    document.removeEventListener('keydown', onKey);
+    overlay.remove();
+  }
+  document.addEventListener('keydown', onKey);
+  document.body.append(overlay);
+
+  deleteBtn.addEventListener('click', async () => {
+    deleteBtn.disabled = true;
+    deleteBtn.replaceChildren(h('span', { class: 'spin' }), document.createTextNode('Deleting…'));
+    try {
+      await deleteScan(scan.id);
+      close();
+      await renderRecords(root, { profile });
+    } catch (error) {
+      status.replaceChildren(banner('error', error.message));
+      deleteBtn.disabled = false;
+      deleteBtn.replaceChildren(document.createTextNode('Delete record'));
+    }
+  });
 }
 
 /* ========================================================================== */

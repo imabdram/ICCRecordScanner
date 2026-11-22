@@ -44,6 +44,7 @@ const PATHS = {
   plus: '<path d="M12 5v14M5 12h14"/>',
   key: '<circle cx="7.5" cy="15.5" r="4.5"/><path d="m10.5 12.5 8-8"/><path d="m16 7 2 2"/><path d="m18.5 4.5 2 2"/>',
   edit: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>',
+  trash: '<path d="M3 6h18"/><path d="M8 6V4.5A1.5 1.5 0 0 1 9.5 3h5A1.5 1.5 0 0 1 16 4.5V6"/><path d="M19 6v13.5A1.5 1.5 0 0 1 17.5 21h-11A1.5 1.5 0 0 1 5 19.5V6"/><path d="M10 11v6M14 11v6"/>',
 };
 
 /** Builds an SVG node. SVG attributes need setAttributeNS, not setAttribute. */
