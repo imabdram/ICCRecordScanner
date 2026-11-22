@@ -1,4 +1,4 @@
-import { $, avatar, banner, h, icon, mount } from './ui.js';
+import { $, avatar, banner, h, icon, mount, roleName } from './ui.js';
 import { SUPABASE_URL } from './config.supabase.js';
 import { getSession, isConfigured, signOut, usernameFrom } from './supabase.js';
 import { fetchProfile } from './data.js';
@@ -166,7 +166,12 @@ async function boot() {
         'div',
         { style: { minWidth: '0' } },
         h('div', { class: 'name' }, profile.full_name || profile.username),
-        h('div', { class: 'meta' }, `${profile.outlet_name ?? 'No outlet'} · ${profile.region_name ?? '—'}`),
+        h('div', { class: 'role' }, roleName(profile.role)),
+        h(
+          'div',
+          { class: 'meta' },
+          [profile.outlet_name, profile.region_name].filter(Boolean).join(' · ') || 'No outlet',
+        ),
       ),
     ),
     h(
