@@ -154,6 +154,29 @@ VITE_SUPABASE_URL=https://<ref>.supabase.co
 VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
 ```
 
+### Release signing
+
+Release builds are signed with a project keystore, not the debug key:
+
+| File | Purpose | Committed? |
+| --- | --- | --- |
+| `android/app/icc-release.jks` | the signing key | **no** |
+| `android/key.properties` | its passwords + alias | **no** |
+
+`android/app/build.gradle.kts` reads `android/key.properties` and falls back to
+the debug key, with a warning, only when that file is absent.
+
+> **Back both files up somewhere you will not lose them.** Android refuses to
+> install an update signed with a different key, so a lost keystore means every
+> phone must uninstall first — and uninstalling deletes that phone's unsynced
+> scans.
+>
+> ```bash
+> apksigner verify --print-certs build/app/outputs/flutter-apk/app-release.apk
+> ```
+>
+> Should read `CN=ICC Record Scanner`, not `CN=Android Debug`.
+
 ## Verifying changes
 
 Both harnesses run against real software, not mocks of their own logic.
