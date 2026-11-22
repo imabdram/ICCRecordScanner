@@ -1,4 +1,4 @@
-﻿// =============================================================================
+// =============================================================================
 // ICC Record Scanner
 //
 // Offline-first SIM recorder. Records are written to SQLite immediately and
@@ -29,6 +29,7 @@ import 'dart:io';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:excel/excel.dart' as xls;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:path/path.dart' as p;
@@ -66,8 +67,10 @@ class AppConfig {
 
 class Validators {
   static final iccidRe = RegExp(r'^89[0-9]{16,20}$');
-  static final primaryRe = RegExp(r'^71[0-9]{7}$');
-  static final secondaryRe = RegExp(r'^[0-9]{7,12}$');
+  /// 071 followed by 7 digits (10 total), e.g. 0716736063.
+  static final primaryRe = RegExp(r'^071[0-9]{7}$');
+  /// 10 digits starting 090, 061 or 63, e.g. 0905736063.
+  static final secondaryRe = RegExp(r'^(090[0-9]{7}|061[0-9]{7}|63[0-9]{8})$');
 
   static String digits(String v) => v.replaceAll(RegExp(r'[^0-9]'), '');
 
@@ -83,14 +86,16 @@ class Validators {
   static String? primary(String raw) {
     final v = digits(raw);
     if (!primaryRe.hasMatch(v)) {
-      return 'Primary must be 71 followed by 7 digits (e.g. 712345678)';
+      return 'Primary must be 071 followed by 7 digits (e.g. 0716736063)';
     }
     return null;
   }
 
   static String? secondary(String raw) {
     final v = digits(raw);
-    if (!secondaryRe.hasMatch(v)) return 'Backup must be 7-12 digits';
+    if (!secondaryRe.hasMatch(v)) {
+      return 'Backup must be 10 digits starting 090, 061 or 63';
+    }
     return null;
   }
 }
@@ -755,6 +760,26 @@ class _Banner extends StatelessWidget {
 }
 
 // =============================================================================
+// sharing
+// =============================================================================
+
+/// The text pasted into WhatsApp when sharing a record.
+///
+/// Four lines, no labels — the receiving side is a person reading a chat, and
+/// "ICCID:" prefixes only add noise:
+///
+///   89252637900011195321
+///   Cisman Cabdulaahi Abubaka
+///   0716736063
+///   0905736063
+String buildShareText(ScanRecord record) => [
+      record.iccid,
+      record.fullName,
+      record.primary,
+      record.secondary,
+    ].join('\n');
+
+// =============================================================================
 // shell
 // =============================================================================
 
@@ -1060,6 +1085,19 @@ class _ScannerTabState extends State<ScannerTab> {
       if (digits.length < 18 || digits.length > 22) continue;
       if (!digits.startsWith('89')) continue;
       _lastHit = DateTime.now();
+
+      // Copy the scanned number to the clipboard so it can be pasted straight
+      // into a chat or a form without retyping it.
+      unawaited(Clipboard.setData(ClipboardData(text: digits)));
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(const SnackBar(
+            content: Text('ICCID copied'),
+            duration: Duration(seconds: 2),
+          ));
+      }
+
       _openForm(digits);
       return;
     }
@@ -1695,6 +1733,56 @@ class _RecordsTabState extends State<RecordsTab> {
     return fmt.format(d);
   }
 
+  /// Long-press on a record: offer to share it or copy it.
+  ///
+  /// The shared text is the four lines people paste into WhatsApp — ICCID,
+  /// name, primary, backup — with no labels.
+  Future<void> _showShareSheet(ScanRecord record) {
+    return showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              title: Text(record.fullName,
+                  style: const TextStyle(fontWeight: FontWeight.w600)),
+              subtitle: Text(record.iccid,
+                  style: const TextStyle(fontSize: 12.5, fontFamily: 'monospace')),
+            ),
+            const Divider(height: 1),
+            ListTile(
+              leading: const Icon(Icons.share_outlined),
+              title: const Text('Share'),
+              subtitle: const Text('WhatsApp, Messages, email…'),
+              onTap: () async {
+                Navigator.pop(ctx);
+                await SharePlus.instance
+                    .share(ShareParams(text: buildShareText(record)));
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.copy_all_outlined),
+              title: const Text('Copy'),
+              subtitle: const Text('The same four lines, to the clipboard'),
+              onTap: () async {
+                Navigator.pop(ctx);
+                await Clipboard.setData(
+                    ClipboardData(text: buildShareText(record)));
+                if (!mounted) return;
+                ScaffoldMessenger.of(context)
+                  ..hideCurrentSnackBar()
+                  ..showSnackBar(const SnackBar(content: Text('Record copied')));
+              },
+            ),
+            const SizedBox(height: 10),
+          ],
+        ),
+      ),
+    );
+  }
+
   /// The signed-in user records every row in this list, so the report's
   /// "Sales Rep" column is always them.
   String get _repName => widget.profile.display;
@@ -1793,6 +1881,7 @@ class _RecordsTabState extends State<RecordsTab> {
                     _DayGroup(
                       label: _dayLabel(day),
                       records: days[day]!,
+                      onShare: _showShareSheet,
                       onTap: (r) async {
                         await Navigator.push(
                           context,
@@ -1810,11 +1899,17 @@ class _RecordsTabState extends State<RecordsTab> {
 }
 
 class _DayGroup extends StatelessWidget {
-  const _DayGroup({required this.label, required this.records, required this.onTap});
+  const _DayGroup({
+    required this.label,
+    required this.records,
+    required this.onTap,
+    required this.onShare,
+  });
 
   final String label;
   final List<ScanRecord> records;
   final void Function(ScanRecord) onTap;
+  final void Function(ScanRecord) onShare;
 
   @override
   Widget build(BuildContext context) {
@@ -1843,6 +1938,7 @@ class _DayGroup extends StatelessWidget {
             first: i == 0,
             last: i == records.length - 1,
             onTap: () => onTap(records[i]),
+            onLongPress: () => onShare(records[i]),
           ),
         const SizedBox(height: 8),
       ],
@@ -1856,12 +1952,14 @@ class _TimelineEntry extends StatelessWidget {
     required this.first,
     required this.last,
     required this.onTap,
+    required this.onLongPress,
   });
 
   final ScanRecord record;
   final bool first;
   final bool last;
   final VoidCallback onTap;
+  final VoidCallback onLongPress;
 
   @override
   Widget build(BuildContext context) {
@@ -1899,6 +1997,7 @@ class _TimelineEntry extends StatelessWidget {
                 child: InkWell(
                   borderRadius: BorderRadius.circular(12),
                   onTap: onTap,
+                  onLongPress: onLongPress,
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
                     child: Row(
@@ -2081,6 +2180,19 @@ class _RecordDetailPageState extends State<RecordDetailPage> {
     if (value != null && mounted) setState(() => _iccid.text = value);
   }
 
+  /// Copy button beside a field in the detail screen.
+  Widget _copyField(String label, String Function() read) => IconButton(
+        tooltip: 'Copy $label',
+        icon: const Icon(Icons.copy, size: 18),
+        onPressed: () async {
+          await Clipboard.setData(ClipboardData(text: read()));
+          if (!mounted) return;
+          ScaffoldMessenger.of(context)
+            ..hideCurrentSnackBar()
+            ..showSnackBar(SnackBar(content: Text('$label copied')));
+        },
+      );
+
   Future<void> _update() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
     final rec = _record!;
@@ -2195,17 +2307,24 @@ class _RecordDetailPageState extends State<RecordDetailPage> {
               keyboard: TextInputType.number,
               // A synced row is already on the server under this ICCID; changing
               // it locally would diverge, so the field is locked.
-              trailing: synced
-                  ? null
-                  : IconButton(
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _copyField('ICCID', () => Validators.digits(_iccid.text)),
+                  if (!synced)
+                    IconButton(
+                      tooltip: 'Scan again',
                       icon: const Icon(Icons.qr_code_scanner, size: 20),
                       onPressed: _rescan,
                     ),
+                ],
+              ),
               validator: (v) => Validators.iccid(v ?? ''),
             ),
             _LabeledField(
               label: 'CUSTOMER NAME',
               controller: _name,
+              trailing: _copyField('Name', () => _name.text.trim()),
               validator: (v) =>
                   (v ?? '').trim().isEmpty ? 'Enter the customer name' : null,
             ),
@@ -2213,12 +2332,14 @@ class _RecordDetailPageState extends State<RecordDetailPage> {
               label: 'PRIMARY NUMBER',
               controller: _primary,
               keyboard: TextInputType.phone,
+              trailing: _copyField('Primary number', () => Validators.digits(_primary.text)),
               validator: (v) => Validators.primary(v ?? ''),
             ),
             _LabeledField(
               label: 'BACKUP NUMBER',
               controller: _secondary,
               keyboard: TextInputType.phone,
+              trailing: _copyField('Backup number', () => Validators.digits(_secondary.text)),
               validator: (v) => Validators.secondary(v ?? ''),
             ),
             const SizedBox(height: 4),

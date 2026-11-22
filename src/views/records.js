@@ -246,21 +246,21 @@ export async function renderRecords(root, { profile, go }) {
 }
 
 /**
- * Phone number rules, mirroring the database constraints.
- *   primary : 71 followed by 7 digits (9 total) -- enforced by schema_v6
- *   backup  : any 7-12 digits
+ * Phone number rules, mirroring the database constraints (schema v8).
+ *   primary : 071 followed by 7 digits (10 total)     0716736063
+ *   backup  : 10 digits starting 090, 061 or 63       0905736063
  * The database is the authority; these just produce a readable message instead
  * of a constraint violation.
  */
-const PRIMARY_RE = /^71[0-9]{7}$/;
-const SECONDARY_RE = /^[0-9]{7,12}$/;
+const PRIMARY_RE = /^071[0-9]{7}$/;
+const SECONDARY_RE = /^(090[0-9]{7}|061[0-9]{7}|63[0-9]{8})$/;
 
 function checkNumbers(primary, secondary) {
   if (!PRIMARY_RE.test(primary)) {
-    return 'Primary number must be 71 followed by 7 digits (for example 712345678).';
+    return 'Primary number must be 071 followed by 7 digits (for example 0716736063).';
   }
   if (!SECONDARY_RE.test(secondary)) {
-    return 'Backup number must be 7 to 12 digits.';
+    return 'Backup number must be 10 digits starting 090, 061 or 63 (for example 0905736063).';
   }
   return null;
 }

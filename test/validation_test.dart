@@ -1,6 +1,8 @@
-// Validation rules that the app, the website and the database all share.
+// Validation rules shared by the app, the website and the database.
 //
-// These are pure functions, so they need no widget or database setup.
+// Number formats changed in v8:
+//   primary   071 + 7 digits (10 total)      0716736063
+//   backup    10 digits starting 090/061/63  0905736063
 import 'package:flutter_test/flutter_test.dart';
 import 'package:icc_record_scanner/main.dart';
 
@@ -18,35 +20,62 @@ void main() {
 
     test('rejects the wrong prefix, wrong length and letters', () {
       expect(Validators.iccid('71252637990000001234'), isNotNull);
-      expect(Validators.iccid('89252637990000'), isNotNull); // too short
-      expect(Validators.iccid('89252637990000001234567'), isNotNull); // too long
+      expect(Validators.iccid('89252637990000'), isNotNull);
+      expect(Validators.iccid('89252637990000001234567'), isNotNull);
       expect(Validators.iccid(''), isNotNull);
     });
   });
 
   group('primary number', () {
-    test('must be 71 followed by 7 digits', () {
-      expect(Validators.primary('712345678'), isNull);
-      expect(Validators.primary('719999999'), isNull);
+    test('must be 071 followed by 7 digits', () {
+      expect(Validators.primary('0716736063'), isNull);
+      expect(Validators.primary('0710000000'), isNull);
     });
 
-    test('rejects other prefixes and lengths', () {
-      expect(Validators.primary('722345678'), isNotNull);
-      expect(Validators.primary('71234567'), isNotNull);
-      expect(Validators.primary('7123456789'), isNotNull);
+    test('rejects the old 9-digit form and other prefixes', () {
+      expect(Validators.primary('717386043'), isNotNull);
+      expect(Validators.primary('0723456789'), isNotNull);
+      expect(Validators.primary('071673606'), isNotNull); // 9 digits
+      expect(Validators.primary('07167360631'), isNotNull); // 11 digits
     });
   });
 
   group('backup number', () {
-    test('accepts any 7-12 digits', () {
-      expect(Validators.secondary('6155550'), isNull);
-      expect(Validators.secondary('615555001234'), isNull);
-      expect(Validators.secondary('712345678'), isNull);
+    test('accepts 10 digits starting 090, 061 or 63', () {
+      expect(Validators.secondary('0905736063'), isNull);
+      expect(Validators.secondary('0612345678'), isNull);
+      expect(Validators.secondary('6312345678'), isNull);
     });
 
-    test('rejects too short or too long', () {
-      expect(Validators.secondary('12345'), isNotNull);
-      expect(Validators.secondary('1234567890123'), isNotNull);
+    test('rejects other prefixes and wrong lengths', () {
+      expect(Validators.secondary('0912345678'), isNotNull);
+      expect(Validators.secondary('090573606'), isNotNull); // 9 digits
+      expect(Validators.secondary('09057360631'), isNotNull); // 11 digits
+      expect(Validators.secondary('061234567'), isNotNull); // 9 digits
+    });
+  });
+
+  group('share text', () {
+    test('is four unlabelled lines: ICCID, name, primary, backup', () {
+      final record = ScanRecord(
+        iccid: '89252637900011195321',
+        fullName: 'Cisman Cabdulaahi Abubaka',
+        primary: '0716736063',
+        secondary: '0905736063',
+        createdAt: DateTime(2026, 11, 22, 10),
+      );
+
+      expect(
+        buildShareText(record),
+        '89252637900011195321\n'
+        'Cisman Cabdulaahi Abubaka\n'
+        '0716736063\n'
+        '0905736063',
+      );
+
+      // No labels, no bullets, nothing before the ICCID.
+      expect(buildShareText(record).startsWith('8925'), isTrue);
+      expect(buildShareText(record).contains(':'), isFalse);
     });
   });
 
