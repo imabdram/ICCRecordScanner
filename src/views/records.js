@@ -229,10 +229,17 @@ export async function renderRecords(root, { profile, go }) {
             h('label', { class: 'filter' }, h('span', {}, 'To'), toInput),
             h('label', { class: 'filter' }, h('span', {}, 'Sales rep'), repSelect),
             h('label', { class: 'filter' }, h('span', {}, 'Outlet'), outletSelect),
+            // Wrapped in a .filter with a hidden label so the button's height and
+            // baseline match the selects beside it.
             h(
-              'button',
-              { class: 'btn secondary sm', type: 'button', onclick: resetFilters },
-              'Reset filters',
+              'div',
+              { class: 'filter no-label' },
+              h('span', { 'aria-hidden': 'true' }, 'Reset'),
+              h(
+                'button',
+                { class: 'btn secondary sm', type: 'button', onclick: resetFilters },
+                'Reset filters',
+              ),
             ),
           ),
           tableSlot,

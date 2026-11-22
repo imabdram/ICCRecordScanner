@@ -333,6 +333,7 @@ select {
 .toolbar .search .ico { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; }
 
 /* --------------------------------------------------------------- filters */
+/* Used by Scan Records and by Users & Team, so both bars align identically. */
 .filters {
   display: flex;
   flex-wrap: wrap;
@@ -345,26 +346,50 @@ select {
 .filters .filter {
   display: flex;
   flex-direction: column;
+  justify-content: flex-end;
   gap: 5px;
   min-width: 128px;
 }
 .filters .filter > span {
+  /* A fixed line height keeps every control on the same baseline: without it the
+     label's own height varies and the button drifts below the selects. */
+  display: block;
+  height: 13px;
+  line-height: 13px;
   font-size: 10.5px;
   font-weight: 700;
   letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--muted);
 }
+/* An empty spacer with the same height as a label, so a control without one
+   (the Reset button) lines up with the controls that have one. */
+.filters .filter.no-label > span {
+  visibility: hidden;
+}
 .filters .filter input,
 .filters .filter select {
+  box-sizing: border-box;
   height: 38px;
   padding: 0 10px;
   border: 1px solid var(--line-strong);
   border-radius: 10px;
   background: #fff;
-  font: inherit;
+  font-family: inherit;
   font-size: 13.5px;
+  font-weight: 400;
+  line-height: normal;
   color: var(--ink, #101c2b);
+}
+/* A native select renders its text differently from an input on every browser;
+   this keeps the three controls visually identical. */
+.filters .filter select {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  padding-right: 30px;
 }
 .filters .filter input:focus,
 .filters .filter select:focus {
@@ -372,7 +397,15 @@ select {
   border-color: var(--brand, #e11929);
   box-shadow: 0 0 0 3px rgba(225, 25, 41, 0.12);
 }
-.filters .btn { height: 38px; }
+.filters .btn {
+  box-sizing: border-box;
+  height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  white-space: nowrap;
+}
 
 /* --------------------------------------------------------------- banners */
 .banner {

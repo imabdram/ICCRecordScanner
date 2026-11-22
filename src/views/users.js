@@ -235,7 +235,18 @@ export async function renderUsers(root, { profile }) {
             h('label', { class: 'filter' }, h('span', {}, 'Role'), roleFilter),
             h('label', { class: 'filter' }, h('span', {}, 'Status'), statusFilter),
             h('label', { class: 'filter' }, h('span', {}, 'Outlet'), outletFilter),
-            h('button', { class: 'btn secondary sm', type: 'button', onclick: resetUserFilters }, 'Reset filters'),
+            // Wrapped in a .filter with a hidden label so the button's height and
+            // baseline match the selects beside it.
+            h(
+              'div',
+              { class: 'filter no-label' },
+              h('span', { 'aria-hidden': 'true' }, 'Reset'),
+              h(
+                'button',
+                { class: 'btn secondary sm', type: 'button', onclick: resetUserFilters },
+                'Reset filters',
+              ),
+            ),
           ),
           listSlot,
         ),
