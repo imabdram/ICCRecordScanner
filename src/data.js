@@ -72,16 +72,15 @@ export async function fetchUsers() {
 /**
  * Recent scans from the flat reporting view (already scoped by RLS).
  *
- * Includes phone uploads: `v_scan_records` returns `sales_rep_name` for scans
- * filed by a signed-in user, and `device_label` for scans uploaded by a phone,
- * with `source` saying which.
+ * `v_scan_records` has no device columns any more: v5 removed the device model,
+ * so every scan belongs to a person.
  */
 export async function fetchScans(limit = 200) {
   return (
     unwrap(
       await supabase()
         .from('v_scan_records')
-        .select('id,iccid,customer_name,primary_number,secondary_number,created_at,sales_rep_id,sales_rep_name,device_id,device_label,outlet_name,region_name,zone_name,source')
+        .select('id,iccid,customer_name,primary_number,secondary_number,created_at,updated_at,sales_rep_id,sales_rep_name,outlet_name,region_name,zone_name')
         .order('created_at', { ascending: false })
         .limit(limit),
     ) ?? []

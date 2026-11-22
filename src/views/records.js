@@ -49,13 +49,9 @@ export async function renderRecords(root, { profile }) {
             { label: 'Primary', value: (s) => h('span', { class: 'mono' }, s.primary_number) },
             { label: 'Backup', value: (s) => h('span', { class: 'mono' }, s.secondary_number) },
             {
-              // A scan filed from a signed-in user shows the person; one
-              // uploaded from a phone shows the registered device instead.
+              // Every scan belongs to a person since v5 removed the device model.
               label: 'Recorded by',
-              value: (s) =>
-                s.sales_rep_name
-                  ? s.sales_rep_name
-                  : h('span', { class: 'cell-sub' }, s.device_label ? `Phone · ${s.device_label}` : '—'),
+              value: (s) => s.sales_rep_name ?? '—',
             },
             {
               label: 'Outlet · Region',
