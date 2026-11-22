@@ -324,6 +324,48 @@ select {
 .toolbar .search input { width: 100%; padding-left: 38px; }
 .toolbar .search .ico { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; }
 
+/* --------------------------------------------------------------- filters */
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+  padding: 0 0 16px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--line);
+}
+.filters .filter {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 128px;
+}
+.filters .filter > span {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.filters .filter input,
+.filters .filter select {
+  height: 38px;
+  padding: 0 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: #fff;
+  font: inherit;
+  font-size: 13.5px;
+  color: var(--ink, #101c2b);
+}
+.filters .filter input:focus,
+.filters .filter select:focus {
+  outline: none;
+  border-color: var(--brand, #e11929);
+  box-shadow: 0 0 0 3px rgba(225, 25, 41, 0.12);
+}
+.filters .btn { height: 38px; }
+
 /* --------------------------------------------------------------- banners */
 .banner {
   display: flex;

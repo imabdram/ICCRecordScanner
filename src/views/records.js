@@ -1,5 +1,6 @@
-import { banner, card, fmtDate, fmtTime, h, icon, mount, roleName, skeletonPanel, table } from '../ui.js';
+﻿import { banner, card, fmtDate, fmtTime, h, icon, mount, roleName, skeletonPanel, table } from '../ui.js';
 import { fetchScans, fetchUsers } from '../data.js';
+import { filterScans } from '../filters.js';
 import { supabase, unwrap } from '../supabase.js';
 
 /** Recent scans, newest first, filtered by RLS for this user's role. */
@@ -20,18 +21,61 @@ export async function renderRecords(root, { profile }) {
       return d.toDateString() === n.toDateString();
     }).length;
 
-    const term = h('input', { type: 'search', placeholder: 'Search customer, ICCID, outlet or rep…' });
+    const term = h('input', { type: 'search', placeholder: 'Search customer, ICCID or numberâ€¦' });
     const tableSlot = h('div', {});
+    const countSlot = h('span', { class: 'hint' }, '');
+
+    // ---- filters ------------------------------------------------------------
+    // Filtering happens in the browser over the rows RLS already allowed. The
+    // rep and outlet lists are derived from those rows, so the pickers can never
+    // offer something the user is not allowed to see.
+    const state = { from: '', to: '', rep: '', outlet: '' };
+
+    const reps = [...new Map(scans.map((s) => [s.sales_rep_id, s.sales_rep_name])).entries()]
+      .filter(([id, name]) => id && name)
+      .sort((a, b) => String(a[1]).localeCompare(String(b[1])));
+    const outlets = [...new Set(scans.map((s) => s.outlet_name).filter(Boolean))].sort();
+
+    const fromInput = h('input', { type: 'date', 'aria-label': 'From date' });
+    const toInput = h('input', { type: 'date', 'aria-label': 'To date' });
+    const repSelect = h(
+      'select',
+      { 'aria-label': 'Sales rep' },
+      h('option', { value: '' }, 'All reps'),
+      ...reps.map(([id, name]) => h('option', { value: id }, name)),
+    );
+    const outletSelect = h(
+      'select',
+      { 'aria-label': 'Outlet' },
+      h('option', { value: '' }, 'All outlets'),
+      ...outlets.map((name) => h('option', { value: name }, name)),
+    );
+
+    const applyFilters = (rows) =>
+      filterScans(rows, { ...state, query: term.value });
+
+    const resetFilters = () => {
+      state.from = state.to = state.rep = state.outlet = '';
+      fromInput.value = toInput.value = repSelect.value = outletSelect.value = '';
+      term.value = '';
+      draw();
+    };
+
+    const onFilter = () => {
+      state.from = fromInput.value;
+      state.to = toInput.value;
+      state.rep = repSelect.value;
+      state.outlet = outletSelect.value;
+      draw();
+    };
 
     const draw = () => {
-      const q = term.value.trim().toLowerCase();
-      const filtered = q
-        ? scans.filter((s) =>
-            [s.customer_name, s.iccid, s.outlet_name, s.sales_rep_name, s.primary_number]
-              .filter(Boolean)
-              .some((v) => String(v).toLowerCase().includes(q)),
-          )
-        : scans;
+      const filtered = applyFilters(scans);
+      const active = [state.from, state.to, state.rep, state.outlet].filter(Boolean).length;
+      countSlot.textContent =
+        filtered.length === scans.length
+          ? `${scans.length} scan(s)`
+          : `${filtered.length} of ${scans.length} scan(s) Â· ${active} filter(s)`;
       mount(
         tableSlot,
         table(
@@ -51,11 +95,11 @@ export async function renderRecords(root, { profile }) {
             {
               // Every scan belongs to a person since v5 removed the device model.
               label: 'Recorded by',
-              value: (s) => s.sales_rep_name ?? '—',
+              value: (s) => s.sales_rep_name ?? 'â€”',
             },
             {
-              label: 'Outlet · Region',
-              value: (s) => h('div', {}, h('div', {}, s.outlet_name), h('div', { class: 'cell-sub' }, s.region_name ?? '—')),
+              label: 'Outlet Â· Region',
+              value: (s) => h('div', {}, h('div', {}, s.outlet_name), h('div', { class: 'cell-sub' }, s.region_name ?? 'â€”')),
             },
             { label: 'Date', value: (s) => fmtDate(s.created_at) },
             { label: 'Time', value: (s) => h('span', { class: 'num' }, fmtTime(s.created_at)) },
@@ -76,12 +120,18 @@ export async function renderRecords(root, { profile }) {
             },
           ],
           filtered,
-          q ? `No scans match “${term.value.trim()}”.` : 'No scans in your scope yet.',
+          scans.length === 0
+            ? 'No scans in your scope yet.'
+            : `No scans match these filters (${filtered.length} of ${scans.length} shown).`,
         ),
       );
     };
 
     term.addEventListener('input', draw);
+    fromInput.addEventListener('change', onFilter);
+    toInput.addEventListener('change', onFilter);
+    repSelect.addEventListener('change', onFilter);
+    outletSelect.addEventListener('change', onFilter);
 
     mount(
       root,
@@ -112,15 +162,8 @@ export async function renderRecords(root, { profile }) {
                 class: 'btn secondary',
                 type: 'button',
                 onclick: () => {
-                  const q = term.value.trim().toLowerCase();
-                  const chosen = q
-                    ? scans.filter((s) =>
-                        [s.customer_name, s.iccid, s.outlet_name, s.sales_rep_name, s.primary_number, s.secondary_number]
-                          .filter(Boolean)
-                          .some((v) => String(v).toLowerCase().includes(q)),
-                      )
-                    : scans;
-                  exportExcel(chosen);
+                  // Export exactly what the table shows, filters included.
+                  exportExcel(applyFilters(scans));
                 },
               },
               icon('download', 16, 'ico', true),
@@ -133,12 +176,30 @@ export async function renderRecords(root, { profile }) {
           { class: 'cards' },
           card('Visible scans', scans.length),
           card('Today', todayCount, { accent: 'accent-red' }),
-          card('Months covered', months.length, { foot: months.slice(0, 2).join(', ') || '—' }),
+          card('Months covered', months.length, { foot: months.slice(0, 2).join(', ') || 'â€”' }),
         ),
         h(
           'div',
           { class: 'panel' },
-          h('div', { class: 'toolbar' }, h('div', { class: 'search' }, icon('search', 16, 'ico', true), term)),
+          h(
+            'div',
+            { class: 'toolbar' },
+            h('div', { class: 'search' }, icon('search', 16, 'ico', true), term),
+            countSlot,
+          ),
+          h(
+            'div',
+            { class: 'filters' },
+            h('label', { class: 'filter' }, h('span', {}, 'From'), fromInput),
+            h('label', { class: 'filter' }, h('span', {}, 'To'), toInput),
+            h('label', { class: 'filter' }, h('span', {}, 'Sales rep'), repSelect),
+            h('label', { class: 'filter' }, h('span', {}, 'Outlet'), outletSelect),
+            h(
+              'button',
+              { class: 'btn secondary sm', type: 'button', onclick: resetFilters },
+              'Reset filters',
+            ),
+          ),
           tableSlot,
         ),
       ),
@@ -185,7 +246,7 @@ function checkNumbers(primary, secondary) {
  *   sales rep    only themselves
  *
  * That rule is enforced in Postgres (scans_insert + scans_before_write), not
- * here — this dropdown only spares you from an error message. The location is
+ * here â€” this dropdown only spares you from an error message. The location is
  * derived from the chosen person, never from the caller.
  */
 async function openAddRecord({ profile, onSaved }) {
@@ -325,7 +386,7 @@ function openEditScan(scan, { onSaved }) {
     h('div', { class: 'modal-head' },
       h('div', {},
         h('h2', {}, 'Edit record'),
-        h('p', { class: 'cell-sub' }, `${scan.iccid} · ${scan.sales_rep_name ?? ''}`),
+        h('p', { class: 'cell-sub' }, `${scan.iccid} Â· ${scan.sales_rep_name ?? ''}`),
       ),
     ),
     h(
@@ -370,8 +431,8 @@ function openEditScan(scan, { onSaved }) {
         field('Customer name', customer),
         field('Primary number', primary),
         field('Backup number', secondary),
-        field('Recorded by', h('input', { type: 'text', value: scan.sales_rep_name ?? '—', disabled: true }), 'Fixed when the scan was filed'),
-        field('Outlet', h('input', { type: 'text', value: scan.outlet_name ?? '—', disabled: true }), 'Fixed when the scan was filed'),
+        field('Recorded by', h('input', { type: 'text', value: scan.sales_rep_name ?? 'â€”', disabled: true }), 'Fixed when the scan was filed'),
+        field('Outlet', h('input', { type: 'text', value: scan.outlet_name ?? 'â€”', disabled: true }), 'Fixed when the scan was filed'),
       ),
       h(
         'div',
@@ -475,3 +536,4 @@ async function exportExcel(rows) {
   a.remove();
   URL.revokeObjectURL(url);
 }
+
