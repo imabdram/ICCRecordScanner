@@ -206,14 +206,34 @@ function openEditUser(user, { tree, users, viewer, onSaved }) {
   const fullName = h('input', { type: 'text', required: true, value: user.full_name ?? '', placeholder: 'Full name' });
   const phone = h('input', { type: 'tel', value: user.phone ?? '', placeholder: 'Optional' });
 
-  const role = h(
-    'select',
-    { disabled: !canSetRole },
-    h('option', { value: 'sales_rep', selected: user.role === 'sales_rep' }, 'Sales Rep'),
-    h('option', { value: 'team_leader', selected: user.role === 'team_leader' }, 'Team Leader'),
-    h('option', { value: 'supervisor', selected: user.role === 'supervisor' }, 'Supervisor'),
-    h('option', { value: 'admin', selected: user.role === 'admin' }, 'Administrator'),
+  // Role options follow the same rule as creation: a supervisor may only hand
+  // out sales_rep/team_leader, and nobody but an admin may grant admin.
+  const editableRoles =
+    viewer.role === 'admin'
+      ? [
+          ['sales_rep', 'Sales Rep'],
+          ['team_leader', 'Team Leader'],
+          ['supervisor', 'Supervisor'],
+          ['admin', 'Administrator'],
+        ]
+      : [
+          ['sales_rep', 'Sales Rep'],
+          ['team_leader', 'Team Leader'],
+        ];
+
+  // If the row's current role is above what this viewer may grant (for example a
+  // supervisor opening an admin), still show it rather than silently defaulting
+  // to the first option — which would look like a pending demotion.
+  const roleOptions = editableRoles.map(([value, label]) =>
+    h('option', { value, selected: user.role === value }, label),
   );
+  if (!editableRoles.some(([value]) => value === user.role)) {
+    roleOptions.unshift(
+      h('option', { value: user.role, selected: true }, roleName(user.role)),
+    );
+  }
+
+  const role = h('select', { disabled: !canSetRole }, ...roleOptions);
 
   const leader = h(
     'select',
@@ -452,11 +472,27 @@ function openCreateUser({ tree, users, viewer, onDone }) {
   });
   const password = h('input', { type: 'password', required: true, minlength: '8', placeholder: 'At least 8 characters', autocomplete: 'new-password' });
   const phone = h('input', { type: 'tel', placeholder: 'Optional', autocomplete: 'off' });
+  // Roles this viewer may hand out. Mirrors the database (schema v9): only an
+  // administrator can create another admin or supervisor.
+  const allowedRoles =
+    viewer.role === 'admin'
+      ? [
+          ['sales_rep', 'Sales Rep'],
+          ['team_leader', 'Team Leader'],
+          ['supervisor', 'Supervisor'],
+          ['admin', 'Administrator'],
+        ]
+      : viewer.role === 'supervisor'
+        ? [
+            ['sales_rep', 'Sales Rep'],
+            ['team_leader', 'Team Leader'],
+          ]
+        : [['sales_rep', 'Sales Rep']];
+
   const role = h(
     'select',
     { disabled: asLeader },
-    h('option', { value: 'sales_rep' }, 'Sales Rep'),
-    h('option', { value: 'team_leader' }, 'Team Leader'),
+    ...allowedRoles.map(([value, label]) => h('option', { value }, label)),
   );
   const leader = asLeader
     ? h('select', { disabled: true }, h('option', { value: viewer.user_id, selected: true }, `${viewer.full_name} (you)`))

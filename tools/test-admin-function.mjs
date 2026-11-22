@@ -385,6 +385,16 @@ r2 = await readJson(await call(handler,
   { Authorization: 'Bearer sup@sim.local' }));
 ok('scoped: a supervisor manages anyone in their zone', r2.status === 200, JSON.stringify(r2.body));
 
+r2 = await readJson(await call(handler,
+  { action: 'create-user', username: 'adm2', password: 'Pass1234!', role: 'admin', outlet_id: 'outlet-bosaso' },
+  { Authorization: 'Bearer sup@sim.local' }));
+ok('scoped: a supervisor cannot create an admin', r2.status === 403, JSON.stringify(r2.body));
+
+r2 = await readJson(await call(handler,
+  { action: 'create-user', username: 'sup3', password: 'Pass1234!', role: 'supervisor', outlet_id: 'outlet-bosaso' },
+  { Authorization: 'Bearer sup@sim.local' }));
+ok('scoped: a supervisor cannot create a supervisor', r2.status === 403, JSON.stringify(r2.body));
+
 // ---------------------------------------------------------------- report
 console.log('\n' + '='.repeat(72));
 let pass = 0;

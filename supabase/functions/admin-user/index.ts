@@ -331,9 +331,10 @@ async function handleCreateUser(body: any, caller: any): Promise<Response> {
   const { outlet, error: outletError } = await resolveOutlet(body.outlet_id);
   if (outletError) return fail(outletError, 400);
 
-  // Only an admin may create another admin.
-  if (role === 'admin' && caller.role !== 'admin') {
-    return fail('Only an administrator can create an administrator.', 403);
+  // Only an admin may create another admin or a supervisor. The database
+  // enforces this too (schema v9), but a clear 403 beats a policy violation.
+  if ((role === 'admin' || role === 'supervisor') && caller.role !== 'admin') {
+    return fail('Only an administrator can create an administrator or supervisor.', 403);
   }
 
   // Supervisors and team leaders may only create people inside their own
