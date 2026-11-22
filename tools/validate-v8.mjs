@@ -1,5 +1,5 @@
 // Verifies the v8 number rules: primary 071xxxxxxx, backup 10 digits starting
-// 090, 061 or 63.
+// 090, 061 or 063.
 //
 //   node validate-v8.mjs ../scripts/schema_v2_greenfield.sql ../scripts/seed_v2.sql \
 //        ../scripts/schema_v5_login_only.sql ../scripts/schema_v8_numbers.sql
@@ -71,11 +71,12 @@ ok('primary 07167360631 rejected (11 digits)', (await tryScan('07167360631', '09
 // backup
 ok('backup 0905736063 accepted', (await tryScan('0716736063', '0905736063')) === 'accepted');
 ok('backup 0612345678 accepted', (await tryScan('0716736064', '0612345678')) === 'accepted');
-ok('backup 6312345678 accepted', (await tryScan('0716736065', '6312345678')) === 'accepted');
+ok('backup 0631234567 accepted', (await tryScan('0716736065', '0631234567')) === 'accepted');
 ok('backup 090573606 rejected (9 digits)', (await tryScan('0716736066', '090573606')) !== 'accepted');
 ok('backup 061234567 rejected (9 digits)', (await tryScan('0716736067', '061234567')) !== 'accepted');
 ok('backup 0912345678 rejected (wrong prefix)', (await tryScan('0716736068', '0912345678')) !== 'accepted');
-ok('backup 630000000 rejected (9 digits)', (await tryScan('0716736069', '630000000')) !== 'accepted');
+ok('backup 630000000 rejected (no leading 0)', (await tryScan('0716736069', '630000000')) !== 'accepted');
+ok('backup 6312345678 rejected (63 is not a prefix)', (await tryScan('0716736070', '6312345678')) !== 'accepted');
 
 console.log('');
 let pass = 0;

@@ -69,8 +69,8 @@ class Validators {
   static final iccidRe = RegExp(r'^89[0-9]{16,20}$');
   /// 071 followed by 7 digits (10 total), e.g. 0716736063.
   static final primaryRe = RegExp(r'^071[0-9]{7}$');
-  /// 10 digits starting 090, 061 or 63, e.g. 0905736063.
-  static final secondaryRe = RegExp(r'^(090[0-9]{7}|061[0-9]{7}|63[0-9]{8})$');
+  /// 10 digits starting 090, 061 or 063, e.g. 0905736063.
+  static final secondaryRe = RegExp(r'^(090[0-9]{7}|061[0-9]{7}|063[0-9]{7})$');
 
   static String digits(String v) => v.replaceAll(RegExp(r'[^0-9]'), '');
 
@@ -94,7 +94,7 @@ class Validators {
   static String? secondary(String raw) {
     final v = digits(raw);
     if (!secondaryRe.hasMatch(v)) {
-      return 'Backup must be 10 digits starting 090, 061 or 63';
+      return 'Backup must be 10 digits starting 090, 061 or 063';
     }
     return null;
   }

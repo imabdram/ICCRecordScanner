@@ -2,7 +2,7 @@
 //
 // Number formats changed in v8:
 //   primary   071 + 7 digits (10 total)      0716736063
-//   backup    10 digits starting 090/061/63  0905736063
+//   backup    10 digits starting 090/061/063 0905736063
 import 'package:flutter_test/flutter_test.dart';
 import 'package:icc_record_scanner/main.dart';
 
@@ -41,10 +41,10 @@ void main() {
   });
 
   group('backup number', () {
-    test('accepts 10 digits starting 090, 061 or 63', () {
+    test('accepts 10 digits starting 090, 061 or 063', () {
       expect(Validators.secondary('0905736063'), isNull);
       expect(Validators.secondary('0612345678'), isNull);
-      expect(Validators.secondary('6312345678'), isNull);
+      expect(Validators.secondary('0631234567'), isNull);
     });
 
     test('rejects other prefixes and wrong lengths', () {

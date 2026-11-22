@@ -5,7 +5,7 @@
 --
 -- NEW RULES
 --   primary_number   : 071 followed by 7 digits  (10 total)   0716736063
---   secondary_number : 10 digits, starting 090, 061, or 63
+--   secondary_number : 10 digits, starting 090, 061, or 063
 --                      0905736063   0612345678   6312345678
 --
 -- These replace v6 (primary 71 + 7 = 9 digits) and the original loose
@@ -31,12 +31,12 @@ alter table public.scans
 alter table public.scans drop constraint if exists scans_secondary_number_check;
 alter table public.scans
   add constraint scans_secondary_number_check
-  check (secondary_number ~ '^(090[0-9]{7}|061[0-9]{7}|63[0-9]{8})$') not valid;
+  check (secondary_number ~ '^(090[0-9]{7}|061[0-9]{7}|063[0-9]{7})$') not valid;
 
 comment on constraint scans_primary_number_check on public.scans is
   'Primary must be 071 followed by 7 digits (10 total).';
 comment on constraint scans_secondary_number_check on public.scans is
-  'Backup must be 10 digits starting 090, 061 or 63.';
+  'Backup must be 10 digits starting 090, 061 or 063.';
 
 -- -----------------------------------------------------------------------------
 -- Self-check: the constraints exist and actually bite.
@@ -54,13 +54,13 @@ begin
   end if;
 
   ok_primary   := '0716736063' ~ '^071[0-9]{7}$';
-  ok_secondary := '0905736063' ~ '^(090[0-9]{7}|061[0-9]{7}|63[0-9]{8})$';
+  ok_secondary := '0905736063' ~ '^(090[0-9]{7}|061[0-9]{7}|063[0-9]{7})$';
 
   if not ok_primary or not ok_secondary then
     raise exception 'v8 self-check failed';
   end if;
 
-  raise notice 'v8 OK: primary 071xxxxxxx, backup 090/061/63 + 10 digits.';
+  raise notice 'v8 OK: primary 071xxxxxxx, backup 090/061/063 + 10 digits.';
 end $$;
 
 -- -----------------------------------------------------------------------------
@@ -69,5 +69,5 @@ end $$;
 --   select iccid, primary_number, secondary_number, created_at
 --     from public.scans
 --    where primary_number   !~ '^071[0-9]{7}$'
---       or secondary_number !~ '^(090[0-9]{7}|061[0-9]{7}|63[0-9]{8})$';
+--       or secondary_number !~ '^(090[0-9]{7}|061[0-9]{7}|063[0-9]{7})$';
 -- -----------------------------------------------------------------------------

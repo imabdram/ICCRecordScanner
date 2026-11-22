@@ -248,19 +248,19 @@ export async function renderRecords(root, { profile, go }) {
 /**
  * Phone number rules, mirroring the database constraints (schema v8).
  *   primary : 071 followed by 7 digits (10 total)     0716736063
- *   backup  : 10 digits starting 090, 061 or 63       0905736063
+ *   backup  : 10 digits starting 090, 061 or 063      0905736063
  * The database is the authority; these just produce a readable message instead
  * of a constraint violation.
  */
 const PRIMARY_RE = /^071[0-9]{7}$/;
-const SECONDARY_RE = /^(090[0-9]{7}|061[0-9]{7}|63[0-9]{8})$/;
+const SECONDARY_RE = /^(090[0-9]{7}|061[0-9]{7}|063[0-9]{7})$/;
 
 function checkNumbers(primary, secondary) {
   if (!PRIMARY_RE.test(primary)) {
     return 'Primary number must be 071 followed by 7 digits (for example 0716736063).';
   }
   if (!SECONDARY_RE.test(secondary)) {
-    return 'Backup number must be 10 digits starting 090, 061 or 63 (for example 0905736063).';
+    return 'Backup number must be 10 digits starting 090, 061 or 063 (for example 0905736063).';
   }
   return null;
 }
