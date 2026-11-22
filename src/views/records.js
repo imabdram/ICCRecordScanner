@@ -25,7 +25,7 @@ export async function renderRecords(root, { profile, go }) {
       return d.toDateString() === n.toDateString();
     }).length;
 
-    const term = h('input', { type: 'search', placeholder: 'Search customer, ICCID or numberÃ¢â‚¬Â¦' });
+    const term = h('input', { type: 'search', placeholder: 'Search customer, ICCID or number…' });
     const tableSlot = h('div', {});
     const countSlot = h('span', { class: 'hint' }, '');
 
@@ -79,7 +79,7 @@ export async function renderRecords(root, { profile, go }) {
       countSlot.textContent =
         filtered.length === scans.length
           ? `${scans.length} scan(s)`
-          : `${filtered.length} of ${scans.length} scan(s) Ã‚Â· ${active} filter(s)`;
+          : `${filtered.length} of ${scans.length} scan(s) · ${active} filter(s)`;
       mount(
         tableSlot,
         table(
@@ -99,11 +99,11 @@ export async function renderRecords(root, { profile, go }) {
             {
               // Every scan belongs to a person since v5 removed the device model.
               label: 'Recorded by',
-              value: (s) => s.sales_rep_name ?? 'Ã¢â‚¬â€',
+              value: (s) => s.sales_rep_name ?? '—',
             },
             {
-              label: 'Outlet Ã‚Â· Region',
-              value: (s) => h('div', {}, h('div', {}, s.outlet_name), h('div', { class: 'cell-sub' }, s.region_name ?? 'Ã¢â‚¬â€')),
+              label: 'Outlet · Region',
+              value: (s) => h('div', {}, h('div', {}, s.outlet_name), h('div', { class: 'cell-sub' }, s.region_name ?? '—')),
             },
             { label: 'Date', value: (s) => fmtDate(s.created_at) },
             { label: 'Time', value: (s) => h('span', { class: 'num' }, fmtTime(s.created_at)) },
@@ -211,7 +211,7 @@ export async function renderRecords(root, { profile, go }) {
           { class: 'cards' },
           card('Visible scans', scans.length),
           card('Today', todayCount, { accent: 'accent-red' }),
-          card('Months covered', months.length, { foot: months.slice(0, 2).join(', ') || 'Ã¢â‚¬â€' }),
+          card('Months covered', months.length, { foot: months.slice(0, 2).join(', ') || '—' }),
         ),
         h(
           'div',
@@ -281,7 +281,7 @@ function checkNumbers(primary, secondary) {
  *   sales rep    only themselves
  *
  * That rule is enforced in Postgres (scans_insert + scans_before_write), not
- * here Ã¢â‚¬â€ this dropdown only spares you from an error message. The location is
+ * here — this dropdown only spares you from an error message. The location is
  * derived from the chosen person, never from the caller.
  */
 async function openAddRecord({ profile, onSaved }) {
@@ -430,7 +430,7 @@ function confirmDeleteScan(scan, { onDeleted }) {
       { style: { padding: '4px 2px 10px' } },
       status,
       h('p', { style: { margin: '0 0 6px' } },
-        `${scan.customer_name} Â· recorded by ${scan.sales_rep_name ?? 'unknown'}`),
+        `${scan.customer_name} · recorded by ${scan.sales_rep_name ?? 'unknown'}`),
       h('p', { class: 'cell-sub', style: { margin: 0 } },
         'Removed for everyone, including reports. This cannot be undone.'),
     ),
@@ -453,7 +453,7 @@ function confirmDeleteScan(scan, { onDeleted }) {
 
   deleteBtn.addEventListener('click', async () => {
     deleteBtn.disabled = true;
-    deleteBtn.replaceChildren(h('span', { class: 'spin' }), document.createTextNode('Deletingâ€¦'));
+    deleteBtn.replaceChildren(h('span', { class: 'spin' }), document.createTextNode('Deleting…'));
     try {
       await deleteScan(scan.id);
       close();
@@ -494,7 +494,7 @@ function openEditScan(scan, { onSaved }) {
     h('div', { class: 'modal-head' },
       h('div', {},
         h('h2', {}, 'Edit record'),
-        h('p', { class: 'cell-sub' }, `${scan.iccid} Ã‚Â· ${scan.sales_rep_name ?? ''}`),
+        h('p', { class: 'cell-sub' }, `${scan.iccid} · ${scan.sales_rep_name ?? ''}`),
       ),
     ),
     h(
@@ -539,8 +539,8 @@ function openEditScan(scan, { onSaved }) {
         field('Customer name', customer),
         field('Primary number', primary),
         field('Backup number', secondary),
-        field('Recorded by', h('input', { type: 'text', value: scan.sales_rep_name ?? 'Ã¢â‚¬â€', disabled: true }), 'Fixed when the scan was filed'),
-        field('Outlet', h('input', { type: 'text', value: scan.outlet_name ?? 'Ã¢â‚¬â€', disabled: true }), 'Fixed when the scan was filed'),
+        field('Recorded by', h('input', { type: 'text', value: scan.sales_rep_name ?? '—', disabled: true }), 'Fixed when the scan was filed'),
+        field('Outlet', h('input', { type: 'text', value: scan.outlet_name ?? '—', disabled: true }), 'Fixed when the scan was filed'),
       ),
       h(
         'div',

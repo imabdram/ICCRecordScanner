@@ -1,4 +1,4 @@
-﻿import { $, avatar, banner, h, icon, mount } from './ui.js';
+import { $, avatar, banner, h, icon, mount } from './ui.js';
 import { SUPABASE_URL } from './config.supabase.js';
 import { getSession, isConfigured, signOut, usernameFrom } from './supabase.js';
 import { fetchProfile } from './data.js';
@@ -33,7 +33,7 @@ const LOADING = () =>
   h(
     'div',
     { class: 'content' },
-    h('div', { class: 'panel' }, h('p', { class: 'muted' }, 'Loadingâ€¦')),
+    h('div', { class: 'panel' }, h('p', { class: 'muted' }, 'Loading…')),
   );
 
 async function start() {
@@ -127,8 +127,8 @@ async function boot() {
     }
     closeDrawer();
     const entry = visibleNav.find((n) => n.id === view) ?? visibleNav[0];
-    document.title = `${entry.label} Â· SIM Management System`;
-    mount(content, h('div', { class: 'panel' }, h('p', { class: 'muted' }, 'Loadingâ€¦')));
+    document.title = `${entry.label} · SIM Management System`;
+    mount(content, h('div', { class: 'panel' }, h('p', { class: 'muted' }, 'Loading…')));
     entry.render(content, { profile, go });
     window.scrollTo({ top: 0 });
   };
@@ -166,7 +166,7 @@ async function boot() {
         'div',
         { style: { minWidth: '0' } },
         h('div', { class: 'name' }, profile.full_name || profile.username),
-        h('div', { class: 'meta' }, `${profile.outlet_name ?? 'No outlet'} Â· ${profile.region_name ?? 'â€”'}`),
+        h('div', { class: 'meta' }, `${profile.outlet_name ?? 'No outlet'} · ${profile.region_name ?? '—'}`),
       ),
     ),
     h(
@@ -227,7 +227,7 @@ async function boot() {
   // Note: creating a user no longer signs the new account in. Accounts are made
   // by the admin-user Edge Function with the service role, so the administrator
   // keeps their own session. (The Neon build used signUp, which did switch the
-  // browser to the new user â€” that whole workaround is gone.)
+  // browser to the new user — that whole workaround is gone.)
 }
 
 async function logout() {
@@ -240,7 +240,7 @@ async function logout() {
     (error) => ({ ok: false, error }),
   );
   window.location.hash = '#dashboard';
-  mount(root, h('div', { class: 'auth-wrap' }, h('div', { class: 'panel narrow' }, h('p', { class: 'muted' }, 'Signing outâ€¦'))));
+  mount(root, h('div', { class: 'auth-wrap' }, h('div', { class: 'panel narrow' }, h('p', { class: 'muted' }, 'Signing out…'))));
 
   const outcome = await Promise.race([
     pending,

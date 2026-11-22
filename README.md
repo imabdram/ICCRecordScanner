@@ -5,17 +5,17 @@ scanning SIM cards, and a **website** that owns accounts and reporting.
 
 ```
         PHONE (offline-first)                  WEBSITE (online)
-  ┌──────────────────────────────┐      ┌───────────────────────────┐
-  │  sign in once                │      │  username + password      │
-  │  scan -> SQLite              │      │  leader: create users,    │
-  │  uploads when online         │─────►│          set passwords    │
-  │  (push-only)                 │      │  reports, records, edit   │
-  └──────────────────────────────┘      └─────────────┬─────────────┘
-                                                      │
-                                            ┌─────────▼─────────┐
-                                            │     Supabase      │
-                                            │ Postgres + Auth   │
-                                            └───────────────────┘
+  â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”      â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+  â”‚  sign in once                â”‚      â”‚  username + password      â”‚
+  â”‚  scan -> SQLite              â”‚      â”‚  leader: create users,    â”‚
+  â”‚  uploads when online         â”‚â”€â”€â”€â”€â”€â–ºâ”‚          set passwords    â”‚
+  â”‚  (push-only)                 â”‚      â”‚  reports, records, edit   â”‚
+  â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜      â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+                                                      â”‚
+                                            â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â–¼â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+                                            â”‚     Supabase      â”‚
+                                            â”‚ Postgres + Auth   â”‚
+                                            â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
 ```
 
 ## What each side does
@@ -45,9 +45,9 @@ an administrator sets a new password.
 
 | Field | Rule |
 | --- | --- |
-| ICCID | starts `89`, 18–22 digits, unique in the whole system |
+| ICCID | starts `89`, 18“22 digits, unique in the whole system |
 | Primary number | `71` + 7 digits (9 total) |
-| Backup number | 7–12 digits |
+| Backup number | 7“12 digits |
 
 Validation exists in three places on purpose: the app (friendly message before
 saving), the website (same), and the **database** (the authority — a modified
@@ -89,7 +89,7 @@ scans); an admin sees the full record on the website.
 | --- | --- |
 | `lib/main.dart` | The Android app (login, scanner, records, sync) |
 | `src/` | Website — framework-free ES modules, built with Vite |
-| `scripts/schema_v*.sql` | Database, in order (v2 base → v6 numbers) |
+| `scripts/schema_v*.sql` | Database, in order (v2 base â†’ v6 numbers) |
 | `supabase/functions/admin-user` | The only server-side code (user admin) |
 | `tools/` | Verification harnesses and UI mockups |
 | `docs/` | Architecture notes and the migration plan |
@@ -179,10 +179,12 @@ node test-admin-function.mjs ..
 ```
 
 **Website** — static import-graph check (catches a missing module or a named
-import its target does not export):
+import its target does not export), plus an encoding check that catches UTF-8
+text saved as CP1252 and rendering as garbled accents:
 
 ```bash
 node tools/check-imports.mjs .
+node tools/check-encoding.mjs .
 ```
 
 **App**:
@@ -218,3 +220,4 @@ and `git log` keeps the old code.
 `docs/HIERARCHY.md` and `docs/SCAN_RECORDS.md` still describe the Neon-era
 tables; they are kept for the hierarchy rationale, but
 `scripts/schema_v2_greenfield.sql` is authoritative.
+

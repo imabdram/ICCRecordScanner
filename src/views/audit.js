@@ -1,10 +1,10 @@
-﻿import { banner, fmtDate, fmtTime, h, icon, mount, roleName, skeletonPanel, table } from '../ui.js';
+import { banner, fmtDate, fmtTime, h, icon, mount, roleName, skeletonPanel, table } from '../ui.js';
 import { fetchDeletions } from '../data.js';
 
 /**
  * Deleted records: what was removed, and by whom.
  *
- * The table is written by a trigger, so this page is read-only by design â€”
+ * The table is written by a trigger, so this page is read-only by design —
  * there is no way to edit or delete an audit row through the API, even as admin.
  * RLS scopes it: admin everywhere, supervisor their zone, team leader their
  * outlet; a sales rep sees nothing (and has no nav entry).
@@ -15,7 +15,7 @@ export async function renderAudit(root, { profile, go }) {
   try {
     const rows = await fetchDeletions(300);
 
-    const term = h('input', { type: 'search', placeholder: 'Search ICCID, customer or who deleted itâ€¦' });
+    const term = h('input', { type: 'search', placeholder: 'Search ICCID, customer or who deleted it…' });
     const slot = h('div', {});
 
     const draw = () => {
@@ -38,7 +38,7 @@ export async function renderAudit(root, { profile, go }) {
                 h(
                   'div',
                   {},
-                  h('div', { class: 'cell-strong' }, r.customer_name ?? 'â€”'),
+                  h('div', { class: 'cell-strong' }, r.customer_name ?? '—'),
                   h('div', { class: 'cell-sub mono' }, r.iccid),
                 ),
             },
@@ -48,11 +48,11 @@ export async function renderAudit(root, { profile, go }) {
                 h(
                   'div',
                   { class: 'mono', style: { fontSize: '12.5px' } },
-                  `${r.primary_number ?? 'â€”'} Â· ${r.secondary_number ?? 'â€”'}`,
+                  `${r.primary_number ?? '—'} · ${r.secondary_number ?? '—'}`,
                 ),
             },
-            { label: 'Recorded by', value: (r) => r.sales_rep_name ?? 'â€”' },
-            { label: 'Outlet', value: (r) => r.outlet_name ?? 'â€”' },
+            { label: 'Recorded by', value: (r) => r.sales_rep_name ?? '—' },
+            { label: 'Outlet', value: (r) => r.outlet_name ?? '—' },
             {
               label: 'Deleted by',
               value: (r) =>
@@ -60,7 +60,7 @@ export async function renderAudit(root, { profile, go }) {
                   'div',
                   {},
                   h('div', { class: 'cell-strong' }, r.deleted_by_username ?? 'system'),
-                  h('div', { class: 'cell-sub' }, `${fmtDate(r.deleted_at)} Â· ${fmtTime(r.deleted_at)}`),
+                  h('div', { class: 'cell-sub' }, `${fmtDate(r.deleted_at)} · ${fmtTime(r.deleted_at)}`),
                 ),
             },
             {
@@ -68,13 +68,13 @@ export async function renderAudit(root, { profile, go }) {
               value: (r) =>
                 r.scan_created_at
                   ? h('span', { class: 'cell-sub' }, fmtDate(r.scan_created_at))
-                  : 'â€”',
+                  : '—',
             },
           ],
           filtered,
           rows.length === 0
             ? 'Nothing has been deleted.'
-            : `Nothing matches â€œ${term.value.trim()}â€.`,
+            : `Nothing matches “${term.value.trim()}”.`,
         ),
       );
     };
@@ -94,7 +94,7 @@ export async function renderAudit(root, { profile, go }) {
             {},
             h('h1', {}, 'Deleted records'),
             h('p', { class: 'sub' },
-              `${rows.length} deletion(s) visible to you as ${roleName(profile.role)} Â· read-only`),
+              `${rows.length} deletion(s) visible to you as ${roleName(profile.role)} · read-only`),
           ),
         ),
         h(
