@@ -88,3 +88,6 @@ Thumbs.db
 _tools/.fnbuild/
 tools/.fnbuild/
 tools/node_modules/
+
+# Export test scratch
+tools/.out/

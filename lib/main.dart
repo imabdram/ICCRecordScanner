@@ -27,7 +27,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
-import 'package:excel/excel.dart';
+import 'package:excel/excel.dart' as xls;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
@@ -1695,36 +1695,30 @@ class _RecordsTabState extends State<RecordsTab> {
     return fmt.format(d);
   }
 
+  /// The signed-in user records every row in this list, so the report's
+  /// "Sales Rep" column is always them.
+  String get _repName => widget.profile.display;
+
+  /// Styled Excel export matching the team's existing report layout:
+  ///   No | Name | Sales Rep | ICC ID | Golis Num | Amtel Num | Status | plan
+  /// Dark blue header, white bold text, thin bottom borders, centred IDs.
+  /// "Status" and "plan" are left empty on purpose: they are filled in after
+  /// export, and inventing values would be worse than a blank cell.
   Future<void> _export() async {
     final rows = _filtered;
     if (rows.isEmpty) return;
-    final excel = Excel.createExcel();
-    final sheet = excel['Records'];
-    sheet.appendRow([
-      TextCellValue('ICCID'),
-      TextCellValue('Customer'),
-      TextCellValue('Primary'),
-      TextCellValue('Backup'),
-      TextCellValue('Recorded at'),
-      TextCellValue('Status'),
-    ]);
-    for (final r in rows) {
-      sheet.appendRow([
-        TextCellValue(r.iccid),
-        TextCellValue(r.fullName),
-        TextCellValue(r.primary),
-        TextCellValue(r.secondary),
-        TextCellValue(DateFormat('yyyy-MM-dd HH:mm').format(r.createdAt)),
-        TextCellValue(r.state.name),
-      ]);
-    }
-    final bytes = excel.save();
+
+    final bytes = buildCustomersWorkbook(rows, _repName);
     if (bytes == null) return;
+
     final dir = await getTemporaryDirectory();
     final file = File(p.join(dir.path,
-        'icc-records-${DateFormat('yyyyMMdd_HHmmss').format(DateTime.now())}.xlsx'));
+        'customers_${DateFormat('dd_MMMM').format(DateTime.now())}.xlsx'));
     await file.writeAsBytes(bytes, flush: true);
-    await SharePlus.instance.share(ShareParams(files: [XFile(file.path)], text: 'ICC records'));
+    await SharePlus.instance.share(ShareParams(
+      files: [XFile(file.path)],
+      text: 'Customer records',
+    ));
   }
 
   @override
@@ -2554,4 +2548,100 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 }
 
+
+
+
+// =============================================================================
+// excel export
+// =============================================================================
+
+/// Builds the styled "Customers" workbook, matching the team's existing report:
+///
+///   No | Name | Sales Rep | ICC ID | Golis Num | Amtel Num | Status | plan
+///
+/// Dark blue header, white bold text, thin bottom borders, centred IDs.
+/// "Status" and "plan" are left empty on purpose: they are filled in after
+/// export, and inventing values would be worse than a blank cell.
+///
+/// Kept out of the widget so it can be tested without a device -- the styling is
+/// the part that is easy to get silently wrong.
+List<int>? buildCustomersWorkbook(List<ScanRecord> rows, String repName) {
+  final excel = xls.Excel.createExcel();
+  final sheet = excel['Customers'];
+
+  // Drop the workbook's default empty sheet and make Customers the first thing
+  // the file opens on -- an empty 'Sheet1' in front of the report looks broken.
+  if (excel.tables.containsKey('Sheet1')) excel.delete('Sheet1');
+  excel.setDefaultSheet('Customers');
+
+  const headers = <String>[
+    'No',
+    'Name',
+    'Sales Rep',
+    'ICC ID',
+    'Golis Num',
+    'Amtel Num',
+    'Status',
+    'plan',
+  ];
+  const widths = <double>[6, 34, 28, 16, 16, 16, 12, 10];
+  for (var i = 0; i < widths.length; i++) {
+    sheet.setColumnWidth(i, widths[i]);
+  }
+
+  final headerStyle = xls.CellStyle(
+    bold: true,
+    fontSize: 11,
+    fontColorHex: xls.ExcelColor.white,
+    backgroundColorHex: xls.ExcelColor.fromHexString('FF1F4E78'),
+    horizontalAlign: xls.HorizontalAlign.Center,
+    verticalAlign: xls.VerticalAlign.Center,
+    bottomBorder: xls.Border(borderStyle: xls.BorderStyle.Thin),
+  );
+
+  sheet.appendRow(headers.map<xls.CellValue>(xls.TextCellValue.new).toList());
+  sheet.setRowHeight(0, 24);
+  for (var c = 0; c < headers.length; c++) {
+    sheet
+        .cell(xls.CellIndex.indexByColumnRow(columnIndex: c, rowIndex: 0))
+        .cellStyle = headerStyle;
+  }
+
+  final bodyBorder = xls.Border(borderStyle: xls.BorderStyle.Thin);
+  final centered = xls.CellStyle(
+    fontSize: 11,
+    horizontalAlign: xls.HorizontalAlign.Center,
+    bottomBorder: bodyBorder,
+  );
+  final left = xls.CellStyle(
+    fontSize: 11,
+    horizontalAlign: xls.HorizontalAlign.Left,
+    bottomBorder: bodyBorder,
+  );
+
+  for (var i = 0; i < rows.length; i++) {
+    final r = rows[i];
+    sheet.appendRow([
+      xls.IntCellValue(i + 1),
+      xls.TextCellValue(r.fullName),
+      xls.TextCellValue(repName),
+      xls.TextCellValue(r.iccid),
+      xls.TextCellValue(r.secondary),
+      xls.TextCellValue(r.primary),
+      xls.TextCellValue(''),
+      xls.TextCellValue(''),
+    ]);
+
+    final rowIndex = i + 1;
+    // Centred: No, ICC ID, Golis, Amtel, Status, plan. Left: Name, Sales Rep.
+    for (var c = 0; c < headers.length; c++) {
+      final style = (c == 1 || c == 2) ? left : centered;
+      sheet
+          .cell(xls.CellIndex.indexByColumnRow(columnIndex: c, rowIndex: rowIndex))
+          .cellStyle = style;
+    }
+  }
+
+  return excel.save();
+}
 

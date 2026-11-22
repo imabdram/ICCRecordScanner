@@ -108,9 +108,23 @@ export async function renderRecords(root, { profile }) {
             ),
             h(
               'button',
-              { class: 'btn secondary', onclick: () => exportCsv(term.value ? scans.filter((s) => JSON.stringify(s).toLowerCase().includes(term.value.toLowerCase())) : scans) },
+              {
+                class: 'btn secondary',
+                type: 'button',
+                onclick: () => {
+                  const q = term.value.trim().toLowerCase();
+                  const chosen = q
+                    ? scans.filter((s) =>
+                        [s.customer_name, s.iccid, s.outlet_name, s.sales_rep_name, s.primary_number, s.secondary_number]
+                          .filter(Boolean)
+                          .some((v) => String(v).toLowerCase().includes(q)),
+                      )
+                    : scans;
+                  exportExcel(chosen);
+                },
+              },
               icon('download', 16, 'ico', true),
-              'Export CSV',
+              'Export Excel',
             ),
           ),
         ),
@@ -383,12 +397,79 @@ function field(text, input, hint) {
   return h('label', { class: 'field' }, h('span', {}, text), input, hint ? h('span', { class: 'field-hint' }, hint) : null);
 }
 
-function exportCsv(scans) {
-  const header = ['Customer', 'ICCID', 'Primary', 'Backup', 'Sales rep', 'Outlet', 'Region', 'Zone', 'Created at'];
-  const rows = scans.map((s) => [s.customer_name, s.iccid, s.primary_number, s.secondary_number, s.sales_rep_name, s.outlet_name, s.region_name, s.zone_name, s.created_at]);
-  const csv = [header, ...rows].map((r) => r.map((v) => `"${String(v ?? '').replaceAll('"', '""')}"`).join(',')).join('\n');
-  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-  const a = h('a', { href: url, download: 'sim-scan-records.csv' });
+/**
+ * Excel export matching the team's existing report:
+ *   No | Name | Sales Rep | ICC ID | Golis Num | Amtel Num | Status | plan
+ *
+ * Dark blue header with white bold text, frozen header row, autofilter,
+ * thin bottom borders, centred IDs. "Status" and "plan" are exported empty:
+ * they are filled in after export, and inventing values would be worse than a
+ * blank cell.
+ */
+async function exportExcel(rows) {
+  const ExcelJS = (await import('exceljs')).default;
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'SIM Management System';
+  wb.created = new Date();
+  const ws = wb.addWorksheet('Customers', {
+    views: [{ state: 'frozen', ySplit: 1 }],
+  });
+
+  ws.columns = [
+    { header: 'No', width: 6, style: { alignment: { horizontal: 'center' } } },
+    { header: 'Name', width: 34 },
+    { header: 'Sales Rep', width: 28 },
+    { header: 'ICC ID', width: 16, style: { alignment: { horizontal: 'center' } } },
+    { header: 'Golis Num', width: 16, style: { alignment: { horizontal: 'center' } } },
+    { header: 'Amtel Num', width: 16, style: { alignment: { horizontal: 'center' } } },
+    { header: 'Status', width: 12, style: { alignment: { horizontal: 'center' } } },
+    { header: 'plan', width: 10, style: { alignment: { horizontal: 'center' } } },
+  ];
+
+  ws.getRow(1).height = 24;
+  ws.getRow(1).eachCell((cell) => {
+    cell.font = { bold: true, size: 11, color: { argb: 'FFFFFFFF' } };
+    cell.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FF1F4E78' },
+    };
+    cell.alignment = { vertical: 'middle', horizontal: 'center' };
+    cell.border = { bottom: { style: 'thin' } };
+  });
+
+  rows.forEach((r, i) => {
+    const row = ws.addRow([
+      i + 1,
+      r.customer_name ?? '',
+      r.sales_rep_name ?? '',
+      r.iccid ?? '',
+      r.secondary_number ?? '', // Golis number
+      r.primary_number ?? '',   // Amtel number (71...)
+      '',
+      '',
+    ]);
+    row.eachCell({ includeEmpty: true }, (cell, col) => {
+      cell.font = { size: 11 };
+      cell.border = { bottom: { style: 'thin' } };
+      cell.alignment =
+        col === 2 || col === 3
+          ? { horizontal: 'left' }
+          : { horizontal: 'center' };
+    });
+  });
+
+  ws.autoFilter = { from: 'A1', to: 'H1' };
+
+  const buffer = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buffer], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  });
+  const url = URL.createObjectURL(blob);
+  const a = h('a', {
+    href: url,
+    download: `customers_${new Date().toISOString().slice(0, 10)}.xlsx`,
+  });
   document.body.append(a);
   a.click();
   a.remove();
