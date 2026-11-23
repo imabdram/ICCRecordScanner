@@ -18,7 +18,7 @@ class _VoucherPageState extends State<VoucherPage> {
   bool _loading = true;
   bool _denied = false;
   String? _error;
-  int _messagesRead = 0;
+  SmsSyncResult _lastSync = SmsSyncResult.empty;
   List<Voucher> _vouchers = const [];
   VoucherSummary _summary = const VoucherSummary(
     today: 0,
@@ -57,7 +57,7 @@ class _VoucherPageState extends State<VoucherPage> {
       }
 
       // Reads every 913 message still in the inbox, parses what is new, stores it.
-      final read = await SmsInbox.instance.sync();
+      final result = await SmsInbox.instance.sync();
       // Then sends whatever the website has not seen yet.
       unawaited(SyncService.instance.pushVouchers());
 
@@ -65,7 +65,7 @@ class _VoucherPageState extends State<VoucherPage> {
       if (!mounted) return;
       setState(() {
         _denied = false;
-        _messagesRead = read;
+        _lastSync = result;
         _vouchers = all;
         _summary = summariseVouchers(all);
         _checkedAt = DateTime.now();
@@ -228,14 +228,59 @@ class _VoucherPageState extends State<VoucherPage> {
                           // if it is 0, the permission or the sender string is the
                           // problem, not the arithmetic.
                           Text(
-                            'Read $_messagesRead message${_messagesRead == 1 ? '' : 's'} from 913 '
-                            '· last checked ${_hhmm(_checkedAt)}',
+                            'Read ${_lastSync.read} message${_lastSync.read == 1 ? '' : 's'} '
+                            '(913 or mentioning $payerMsisdn)'
+                            ' · ${_lastSync.parsed} recognised as vouchers'
+                            ' · last checked ${_hhmm(_checkedAt)}',
                             style: const TextStyle(
                                 fontSize: 11, color: AppConfig.muted),
                           ),
+                          if (_lastSync.unrecognised.isNotEmpty) ...[
+                            const SizedBox(height: 10),
+                            _unrecognisedPanel(),
+                          ],
                         ],
                       ),
                     ),
+    );
+  }
+
+  /// Messages from 913 that the parser did not recognise.
+  ///
+  /// This exists because a total that disagrees with the phone is almost always
+  /// a message format the parser has not seen, not bad arithmetic — and without
+  /// the text itself there is no way to tell.
+  Widget _unrecognisedPanel() {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF7E6),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '${_lastSync.unrecognised.length} message(s) from 913 not recognised',
+            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'These are skipped, so they are missing from the totals. If one of '
+            'them is a voucher, its wording is different from what the parser knows.',
+            style: TextStyle(fontSize: 11.5, color: AppConfig.muted),
+          ),
+          const SizedBox(height: 8),
+          for (final snippet in _lastSync.unrecognised)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(
+                snippet,
+                style: const TextStyle(fontSize: 11, height: 1.35),
+              ),
+            ),
+        ],
+      ),
     );
   }
 

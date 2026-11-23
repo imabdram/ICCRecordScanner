@@ -156,7 +156,7 @@ ignored — adding either would inflate the total.
 
 | Detail | Behaviour |
 | --- | --- |
-| Messages read | every 913 message still in the inbox, not just new ones |
+| Messages read | every message from 913 **or whose body mentions 252710000040**, still in the inbox |
 | Duplicates | keyed by the SMS id, so re-reading never double-counts |
 | Timestamp | taken from inside the message, which is what "today" must mean |
 | Permission | `READ_SMS`, asked once when the sheet is first opened |

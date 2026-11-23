@@ -51,6 +51,14 @@ void main() {
       expect(parseVoucherMessage('You received Airtime, no amount here'), isNull);
       expect(parseVoucherMessage(''), isNull);
     });
+
+    test('ignores outgoing transfers that mention the payer', () {
+      // Same shape and amount, but money leaving the account.
+      const outgoing =
+          'You sent Airtime to 252710000040 on 22/11/2026 18:46:41, '
+          'TransactionID is 1; Amount is \$-5.00. Now your balance is \$+1.00.';
+      expect(parseVoucherMessage(outgoing), isNull);
+    });
   });
 
   group('summariseVouchers', () {

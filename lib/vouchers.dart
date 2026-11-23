@@ -16,6 +16,10 @@ import 'package:sqflite/sqflite.dart';
 
 import 'db_schema.dart';
 
+/// The payer the voucher messages are about. Used to match messages by content,
+/// not only by the shortcode they arrived from.
+const String payerMsisdn = '252710000040';
+
 /// Formats an amount the way the vouchers are written: $245.00
 String money(double value) => '\$${value.toStringAsFixed(2)}';
 
@@ -40,6 +44,10 @@ class Voucher {
 /// Parses one 913 message. Returns null when the text is not a voucher message,
 /// so unrelated messages from the same sender are skipped rather than counted.
 Voucher? parseVoucherMessage(String body, {String messageId = ''}) {
+  // Only inbound airtime counts. The inbox query also matches messages that just
+  // mention the payer, and an outgoing transfer must not inflate the total.
+  if (!body.toLowerCase().contains('you received')) return null;
+
   final date = RegExp(
     r'on\s+(\d{2})/(\d{2})/(\d{4})\s+(\d{2}):(\d{2}):(\d{2})',
   ).firstMatch(body);
@@ -199,6 +207,24 @@ VoucherSummary summariseVouchers(List<Voucher> vouchers, {DateTime? now}) {
   );
 }
 
+/// What a read of the inbox produced.
+///
+/// [unrecognised] holds short snippets of messages from the sender that did NOT
+/// parse — the fastest way to see why an app total disagrees with the phone.
+class SmsSyncResult {
+  final int read;
+  final int parsed;
+  final List<String> unrecognised;
+
+  const SmsSyncResult({
+    required this.read,
+    required this.parsed,
+    required this.unrecognised,
+  });
+
+  static const empty = SmsSyncResult(read: 0, parsed: 0, unrecognised: []);
+}
+
 /// Reads the inbox through the native channel in MainActivity.
 class SmsInbox {
   SmsInbox._();
@@ -216,10 +242,17 @@ class SmsInbox {
     return result.isGranted;
   }
 
-  /// Every message from [sender] still in the inbox, newest first.
-  Future<List<Map<String, dynamic>>> read({String sender = '913', int limit = 2000}) async {
-    final rows = await _channel.invokeMethod<List<dynamic>>('readSender', {
-      'sender': sender,
+  /// Every message from [senders] OR whose body mentions [bodyContains], newest
+  /// first. Matching on the payer inside the text matters: restricting to the
+  /// sender code alone misses messages that arrive from another shortcode.
+  Future<List<Map<String, dynamic>>> read({
+    List<String> senders = const ['913'],
+    String? bodyContains = payerMsisdn,
+    int limit = 2000,
+  }) async {
+    final rows = await _channel.invokeMethod<List<dynamic>>('readVouchers', {
+      'senders': senders,
+      'bodyContains': bodyContains,
       'limit': limit,
     });
     return (rows ?? [])
@@ -227,19 +260,38 @@ class SmsInbox {
         .toList();
   }
 
-  /// Reads, parses and caches. Returns how many messages from [sender] were read,
-  /// so the page can show it — a zero is the quickest way to spot a permission or
-  /// sender-string problem.
-  Future<int> sync({String sender = '913'}) async {
-    final messages = await read(sender: sender);
+  /// Reads, parses and caches. Reports how many messages were read, how many
+  /// were recognised as vouchers, and a few snippets of the ones that were not —
+  /// a zero or a gap here is the quickest way to spot a permission problem or a
+  /// message format this parser does not know yet.
+  Future<SmsSyncResult> sync({
+    List<String> senders = const ['913'],
+    String? bodyContains = payerMsisdn,
+  }) async {
+    final messages = await read(senders: senders, bodyContains: bodyContains);
+    var parsed = 0;
+    final unrecognised = <String>[];
+
     for (final m in messages) {
+      final body = (m['body'] ?? '') as String;
       final voucher = parseVoucherMessage(
-        (m['body'] ?? '') as String,
+        body,
         messageId: (m['id'] ?? '').toString(),
       );
-      if (voucher == null) continue;
+      if (voucher == null) {
+        if (unrecognised.length < 5) {
+          unrecognised.add(body.length > 160 ? '${body.substring(0, 160)}…' : body);
+        }
+        continue;
+      }
       await VoucherStore.instance.save(voucher);
+      parsed += 1;
     }
-    return messages.length;
+
+    return SmsSyncResult(
+      read: messages.length,
+      parsed: parsed,
+      unrecognised: unrecognised,
+    );
   }
 }
