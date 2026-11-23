@@ -1,58 +1,17 @@
-import { banner, card, fmtDate, fmtTime, h, icon, mount, roleName, skeletonPanel, table } from '../ui.js';
+import { card, fmtDate, h, mount, roleName, skeletonPanel, table } from '../ui.js';
 import { fetchVoucherDaily, fetchVoucherTotals } from '../data.js';
 
-const MONTHS = [
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December',
-];
-
 /**
- * A bar per day of the current month — the same chart the app shows, so the two
- * screens read identically. Days with nothing keep a thin tick, otherwise the
- * gaps a supervisor is looking for would disappear.
- */
-function monthBars(byDay) {
-  const now = new Date();
-  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-  const values = Object.values(byDay);
-  const max = values.length ? Math.max(...values) : 0;
-
-  const cells = [];
-  for (let day = 1; day <= daysInMonth; day += 1) {
-    const value = byDay[day] ?? 0;
-    const height = max ? Math.max(Math.round((value / max) * 100), 4) : 0;
-    const isToday = day === now.getDate();
-
-    cells.push(
-      h(
-        'div',
-        { class: 'day-bar-cell', title: `Day ${day}: $${value.toFixed(2)}` },
-        h('div', {
-          class: `day-bar${isToday ? ' today' : ''}${value ? '' : ' empty'}`,
-          style: { height: value ? `${height}%` : '2px' },
-        }),
-        isToday || day === 1 || day % 5 === 0
-          ? h('span', { class: `day-num${isToday ? ' today' : ''}` }, String(day))
-          : h('span', { class: 'day-num' }, ''),
-      ),
-    );
-  }
-  return h('div', { class: 'day-bars' }, ...cells);
-}
-
-/**
- * E-voucher report: airtime totals per sales rep, today and this month.
+ * E-vouchers: per rep per day, with filters.
  *
- * The numbers come from the operator's 913 SMS messages, read on each rep's
- * phone and uploaded. They are what the handset reported, not audited cash, so
- * this page shows them per rep with a "last received" column: a rep whose phone
- * stopped syncing looks identical to a rep who stopped selling otherwise.
+ * Days come from v_voucher_daily so a supervisor can answer "how much did Hodan
+ * make on the 14th?" directly, instead of reading it off a chart.
  */
 export async function renderVouchers(root, { profile }) {
   mount(root, h('div', {}, skeletonPanel(5)));
 
   try {
-    const [rows, daily] = await Promise.all([fetchVoucherTotals(), fetchVoucherDaily()]);
+    const [totals, daily] = await Promise.all([fetchVoucherTotals(), fetchVoucherDaily(2000)]);
 
     const money = (v) =>
       `$${Number(v ?? 0).toLocaleString(undefined, {
@@ -60,104 +19,76 @@ export async function renderVouchers(root, { profile }) {
         maximumFractionDigits: 2,
       })}`;
 
-    const todayTotal = rows.reduce((s, r) => s + Number(r.today_amount ?? 0), 0);
-    const monthTotal = rows.reduce((s, r) => s + Number(r.month_amount ?? 0), 0);
-    const todayCount = rows.reduce((s, r) => s + Number(r.today_count ?? 0), 0);
-    const activeToday = rows.filter((r) => Number(r.today_count ?? 0) > 0).length;
+    const todayTotal = totals.reduce((s, r) => s + Number(r.today_amount ?? 0), 0);
+    const monthTotal = totals.reduce((s, r) => s + Number(r.month_amount ?? 0), 0);
+    const monthCount = totals.reduce((s, r) => s + Number(r.month_count ?? 0), 0);
 
-    // Per-day amounts for the current month, across everyone in scope.
+    const reps = [...new Map(daily.map((d) => [d.sales_rep_id, d.sales_rep_name])).entries()]
+      .sort((a, b) => String(a[1]).localeCompare(String(b[1])));
+
+    // Default the range to the current month.
     const now = new Date();
-    const byDay = {};
-    for (const row of daily) {
-      const day = new Date(row.day);
-      if (day.getFullYear() !== now.getFullYear() || day.getMonth() !== now.getMonth()) continue;
-      byDay[day.getDate()] = (byDay[day.getDate()] ?? 0) + Number(row.amount ?? 0);
-    }
-    const hasAny = rows.some((r) => Number(r.month_count ?? 0) > 0);
+    const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
-    const term = h('input', {
-      type: 'search',
-      placeholder: 'Search rep or outlet…',
-    });
+    const repSel = h(
+      'select',
+      { 'aria-label': 'Sales rep' },
+      h('option', { value: '' }, 'All sales reps'),
+      ...reps.map(([id, name]) => h('option', { value: id }, name)),
+    );
+    const fromInput = h('input', { type: 'date', 'aria-label': 'From', value: `${iso(now).slice(0, 7)}-01` });
+    const toInput = h('input', { type: 'date', 'aria-label': 'To', value: iso(now) });
+
     const slot = h('div', {});
     const countSlot = h('span', { class: 'hint' }, '');
 
     const draw = () => {
-      const q = term.value.trim().toLowerCase();
-      const filtered = q
-        ? rows.filter((r) =>
-            [r.full_name, r.username, r.outlet_name, r.region_name]
-              .filter(Boolean)
-              .some((v) => String(v).toLowerCase().includes(q)),
-          )
-        : rows;
+      const from = fromInput.value;
+      const to = toInput.value;
+      const rep = repSel.value;
 
-      countSlot.textContent =
-        filtered.length === rows.length
-          ? `${rows.length} people`
-          : `${filtered.length} of ${rows.length}`;
+      const rows = daily
+        .filter((d) => {
+          const day = String(d.day).slice(0, 10);
+          if (from && day < from) return false;
+          if (to && day > to) return false;
+          if (rep && d.sales_rep_id !== rep) return false;
+          return true;
+        })
+        .sort((a, b) => String(b.day).localeCompare(String(a.day)));
+
+      const sum = rows.reduce((s, r) => s + Number(r.amount ?? 0), 0);
+      countSlot.textContent = `${rows.length} day(s) · ${money(sum)}`;
 
       mount(
         slot,
         table(
           [
-            {
-              label: 'Sales rep',
-              value: (r) =>
-                h(
-                  'div',
-                  {},
-                  h('div', { class: 'cell-strong' }, r.full_name || r.username),
-                  h('div', { class: 'cell-sub' }, roleName(r.role)),
-                ),
-            },
+            { label: 'Day', value: (r) => fmtDate(r.day) },
+            { label: 'Sales rep', value: (r) => h('span', { class: 'cell-strong' }, r.sales_rep_name) },
             { label: 'Outlet', value: (r) => r.outlet_name ?? '—' },
-            { label: 'Region', value: (r) => r.region_name ?? '—' },
+            { label: 'Vouchers', value: (r) => String(r.vouchers ?? 0) },
             {
-              label: 'Today',
-              value: (r) =>
-                h(
-                  'div',
-                  {},
-                  h('span', { class: 'num big' }, money(r.today_amount)),
-                  Number(r.today_count ?? 0) > 0
-                    ? h('div', { class: 'cell-sub' }, `${r.today_count} voucher(s)`)
-                    : null,
-                ),
-            },
-            {
-              label: 'This month',
-              value: (r) =>
-                h(
-                  'div',
-                  {},
-                  h('span', { class: 'num big' }, money(r.month_amount)),
-                  h('div', { class: 'cell-sub' }, `${r.month_count ?? 0} voucher(s)`),
-                ),
-            },
-            {
-              // The freshness column: without it, a silent phone looks like no sales.
-              label: 'Last received',
-              value: (r) =>
-                r.last_received_at
-                  ? h(
-                      'div',
-                      {},
-                      h('div', {}, fmtDate(r.last_received_at)),
-                      h('div', { class: 'cell-sub' }, fmtTime(r.last_received_at)),
-                    )
-                  : h('span', { class: 'cell-sub' }, 'never'),
+              label: 'Amount',
+              value: (r) => h('span', { class: 'num big' }, money(r.amount)),
             },
           ],
-          filtered,
-          rows.length === 0
-            ? 'No vouchers uploaded yet. They appear once a rep opens E-voucher on the phone while online.'
-            : `Nothing matches “${term.value.trim()}”.`,
+          rows,
+          'No vouchers in this range yet. They appear once a rep opens E-voucher on the phone while online.',
         ),
       );
     };
 
-    term.addEventListener('input', draw);
+    const reset = () => {
+      repSel.value = '';
+      fromInput.value = `${iso(now).slice(0, 7)}-01`;
+      toInput.value = iso(now);
+      draw();
+    };
+
+    repSel.addEventListener('change', draw);
+    fromInput.addEventListener('change', draw);
+    toInput.addEventListener('change', draw);
 
     mount(
       root,
@@ -171,71 +102,38 @@ export async function renderVouchers(root, { profile }) {
             'div',
             {},
             h('h1', {}, 'E-vouchers'),
-            h(
-              'p',
-              { class: 'sub' },
-              `Airtime from 913 SMS, per rep · visible to you as ${roleName(profile.role)}`,
-            ),
+            h('p', { class: 'sub' }, `Airtime from 913 SMS per rep per day · you are ${roleName(profile.role)}`),
           ),
         ),
         h(
           'div',
           { class: 'cards' },
-          card('Today', money(todayTotal), {
-            accent: 'accent-red',
-            foot: `${todayCount} voucher(s)`,
-          }),
-          card('This month', money(monthTotal), { foot: 'All reps in your scope' }),
-          card('Reps with vouchers today', `${activeToday}`, {
-            accent: 'accent-green',
-            foot: `of ${rows.length} in scope`,
-          }),
+          card('Today', money(todayTotal), { accent: 'accent-red' }),
+          card('This month', money(monthTotal), { foot: `${monthCount} voucher(s)` }),
         ),
         h(
           'div',
           { class: 'panel' },
           h(
             'div',
-            { class: 'panel-head' },
-            h('h2', {}, `${MONTHS[now.getMonth()]} by day`),
+            { class: 'filters' },
+            h('label', { class: 'filter' }, h('span', {}, 'Sales rep'), repSel),
+            h('label', { class: 'filter' }, h('span', {}, 'From'), fromInput),
+            h('label', { class: 'filter' }, h('span', {}, 'To'), toInput),
             h(
-              'span',
-              { class: 'hint' },
-              hasAny ? 'Airtime per day, everyone in your scope' : 'No vouchers uploaded yet',
+              'div',
+              { class: 'filter no-label' },
+              h('span', { 'aria-hidden': 'true' }, 'Reset'),
+              h('button', { class: 'btn secondary sm', type: 'button', onclick: reset }, 'Reset filters'),
             ),
           ),
-          hasAny
-            ? monthBars(byDay)
-            : h(
-                'div',
-                { class: 'empty' },
-                'The chart fills in once a rep opens E-voucher on the phone while online.',
-              ),
-        ),
-        h(
-          'div',
-          { class: 'panel' },
-          h(
-            'div',
-            { class: 'toolbar' },
-            h('div', { class: 'search' }, icon('search', 16, 'ico', true), term),
-            countSlot,
-          ),
+          h('div', { class: 'toolbar' }, countSlot),
           slot,
-        ),
-        h(
-          'p',
-          { class: 'cell-sub', style: { marginTop: '12px' } },
-          'Read from each rep’s phone. Treat as reported airtime, not audited cash — ' +
-            'and check “Last received”: a stale date means the phone is not syncing.',
         ),
       ),
     );
     draw();
   } catch (error) {
-    mount(
-      root,
-      h('div', { class: 'panel' }, h('h1', {}, 'E-vouchers'), banner('error', error.message)),
-    );
+    mount(root, h('div', { class: 'panel' }, h('h1', {}, 'E-vouchers'), h('p', {}, error.message)));
   }
 }
