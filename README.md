@@ -55,23 +55,35 @@ client cannot bypass it).
 
 ## Sync model
 
-Push-only, append-only from the phone's point of view:
+Two directions, and neither loses local work:
 
 ```
-scan -> SQLite (instant)
-          |
-          | when online: after each save, on app open, on resume, on reconnect
-          v
-      Supabase -> website reports
+  push:  scan -> SQLite (instant) -> upload when online
+  pull:  Supabase -> merge into SQLite (never deletes)
 ```
 
-- The phone **never deletes** a server record; it only marks its own copy sent.
-- Re-uploading is safe: the ICCID is unique, so a duplicate is detected.
-- A record the server already has is marked **duplicate** locally instead of
-  being retried forever.
-- Deleting is possible **only before a record uploads**. Once it is on the
-  server, the office owns it — the app hides the Delete button instead of
-  letting the two sides silently disagree.
+**Push** runs after each save, on app open, on resume, on reconnect, and from
+"Sync now" or pull-to-refresh. The phone never deletes a server record; it only
+marks its copy as sent. Re-uploading is safe because the ICCID is unique, and a
+record the server already has becomes **duplicate** locally instead of being
+retried forever.
+
+**Pull** runs when the Records tab opens and on "Sync now". It reads whatever
+RLS allows (own scans for a rep, the outlet for a team leader, the zone for a
+supervisor) and merges by ICCID:
+
+| Local state | Result |
+| --- | --- |
+| not on the phone | inserted as synced |
+| already synced | the server's values win, so an office correction arrives |
+| has unsent edits | the edit is kept; only the server id is linked |
+
+Nothing is deleted by a pull, and a local record is never removed because the
+server disagreed.
+
+Deleting is possible **only before a record uploads**. Once it is on the server
+the office owns it: the app hides the Delete button rather than letting the two
+sides silently disagree.
 
 ## Duplicates
 

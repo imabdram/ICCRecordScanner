@@ -179,6 +179,29 @@ class ScanRecord {
       );
 }
 
+/// What to do with a row that came down from the server.
+enum MergeOutcome {
+  /// Never seen on this phone: store it.
+  insert,
+
+  /// Present and already synced: the server's values win, so an office
+  /// correction reaches the phone.
+  adoptRemote,
+
+  /// Present but with unsent local changes: keep them, just link the server id.
+  linkOnly,
+}
+
+MergeOutcome decideMerge({
+  required bool existsLocally,
+  required SyncState localState,
+}) {
+  if (!existsLocally) return MergeOutcome.insert;
+  return localState == SyncState.synced
+      ? MergeOutcome.adoptRemote
+      : MergeOutcome.linkOnly;
+}
+
 class RecordStore {
   RecordStore._();
   static final RecordStore instance = RecordStore._();
@@ -271,6 +294,38 @@ class RecordStore {
       whereArgs: [id],
     );
   }
+
+  /// Merges a row that came from the server.
+  ///
+  /// - unknown locally      -> inserted as synced
+  /// - known and synced     -> the server's values win (an office correction
+  ///                           should reach the phone)
+  /// - known but unsynced   -> the local edit is kept; only the server id is
+  ///                           linked, so the pending upload still happens
+  ///
+  /// Nothing is ever deleted here: a record that exists on the phone stays.
+  Future<void> upsertFromServer(ScanRecord remote) async {
+    final existing = await byIccid(remote.iccid);
+    final outcome = decideMerge(
+      existsLocally: existing != null,
+      localState: existing?.state ?? SyncState.pending,
+    );
+
+    switch (outcome) {
+      case MergeOutcome.insert:
+        await insert(remote.copyWith(state: SyncState.synced));
+      case MergeOutcome.adoptRemote:
+        await update(existing!.copyWith(
+          fullName: remote.fullName,
+          primary: remote.primary,
+          secondary: remote.secondary,
+          serverId: remote.serverId,
+          state: SyncState.synced,
+        ));
+      case MergeOutcome.linkOnly:
+        await update(existing!.copyWith(serverId: remote.serverId));
+    }
+  }
 }
 
 /// Push-only sync. Never pulls, never deletes remotely.
@@ -341,6 +396,59 @@ class SyncService {
   /// Fire-and-forget after each save.
   void pushSoon() {
     unawaited(pushNow());
+  }
+
+  /// Downloads the records this user may see and merges them into SQLite.
+  ///
+  /// RLS decides the scope: a sales rep gets their own scans, a team leader
+  /// their outlet, a supervisor their zone. Returns how many rows were read.
+  Future<int> pullNow({int limit = 500}) async {
+    final client = Supabase.instance.client;
+    if (client.auth.currentSession == null) return 0;
+    if (!await online) return 0;
+
+    try {
+      final rows = await client
+          .from('v_scan_records')
+          .select(
+              'id,iccid,customer_name,primary_number,secondary_number,created_at,sales_rep_id')
+          .order('created_at', ascending: false)
+          .limit(limit);
+
+      var count = 0;
+      for (final raw in rows as List) {
+        final row = Map<String, dynamic>.from(raw as Map);
+        final iccid = (row['iccid'] ?? '') as String;
+        if (iccid.isEmpty) continue;
+
+        final remote = ScanRecord(
+          iccid: iccid,
+          fullName: (row['customer_name'] ?? '') as String,
+          primary: (row['primary_number'] ?? '') as String,
+          secondary: (row['secondary_number'] ?? '') as String,
+          createdAt: DateTime.tryParse((row['created_at'] ?? '') as String) ??
+              DateTime.now(),
+          state: SyncState.synced,
+          serverId: row['id'] as String?,
+        );
+        await RecordStore.instance.upsertFromServer(remote);
+        count += 1;
+      }
+      lastRun = DateTime.now();
+      _notify();
+      return count;
+    } on PostgrestException {
+      return 0;
+    } catch (_) {
+      // Offline or a transient failure: keep what is on the phone.
+      return 0;
+    }
+  }
+
+  /// Push then pull: used by pull-to-refresh and the drawer's "Sync now".
+  Future<void> syncNow() async {
+    await pushNow();
+    await pullNow();
   }
 }
 
@@ -847,7 +955,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         profile: widget.profile,
         pending: _pending,
         onSync: () async {
-          await SyncService.instance.pushNow();
+          await SyncService.instance.syncNow();
           await _refreshPending();
           if (mounted) {
             messenger.showSnackBar(
@@ -1678,18 +1786,42 @@ class _RecordsTabState extends State<RecordsTab> {
   final _search = TextEditingController();
   List<ScanRecord> _all = [];
   bool _loading = true;
+  bool _pulling = false;
 
   @override
   void initState() {
     super.initState();
     _search.addListener(() => setState(() {}));
     _load();
+    // Opening Records also fetches anything recorded elsewhere (website, another
+    // phone) so the list matches the office without a manual step.
+    unawaited(_pullFromServer(silent: true));
   }
 
   @override
   void dispose() {
     _search.dispose();
     super.dispose();
+  }
+
+  /// Downloads records this user may see and merges them in.
+  Future<void> _pullFromServer({bool silent = false}) async {
+    if (_pulling) return;
+    _pulling = true;
+    try {
+      final downloaded = await SyncService.instance.pullNow();
+      if (downloaded > 0) await _load();
+      if (!mounted || silent) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(
+          content: Text(downloaded == 0
+              ? 'Nothing new to download'
+              : 'Downloaded $downloaded record(s)'),
+        ));
+    } finally {
+      _pulling = false;
+    }
   }
 
   Future<void> _load() async {
@@ -1833,6 +1965,11 @@ class _RecordsTabState extends State<RecordsTab> {
         ),
         actions: [
           IconButton(
+            tooltip: 'Download records from the server',
+            icon: const Icon(Icons.cloud_download_outlined),
+            onPressed: _pulling ? null : _pullFromServer,
+          ),
+          IconButton(
             tooltip: 'Export',
             icon: const Icon(Icons.file_download_outlined),
             onPressed: _export,
@@ -1843,7 +1980,7 @@ class _RecordsTabState extends State<RecordsTab> {
           ? const Center(child: CircularProgressIndicator())
           : RefreshIndicator(
               onRefresh: () async {
-                await SyncService.instance.pushNow();
+                await SyncService.instance.syncNow();
                 await _load();
               },
               child: ListView(
@@ -2655,8 +2792,9 @@ class _SettingsPageState extends State<SettingsPage> {
                 RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             leading: const Icon(Icons.sync),
             title: const Text('Sync now'),
+            subtitle: const Text('Upload pending scans and download new ones'),
             onTap: () async {
-              await SyncService.instance.pushNow();
+              await SyncService.instance.syncNow();
               if (!mounted) return;
               messenger.showSnackBar(
                 const SnackBar(content: Text('Sync finished')),
