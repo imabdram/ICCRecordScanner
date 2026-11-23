@@ -336,7 +336,11 @@ function openEditUser(user, { tree, users, viewer, onSaved }) {
   });
 
   const status = h('div', {});
-  const picker = regionOutletPicker(tree, { initialOutletId: user.outlet_id, disabled: locked });
+  const picker = regionOutletPicker(tree, {
+    initialOutletId: user.outlet_id,
+    initialRegionId: user.region_id ?? viewer.region_id ?? undefined,
+    disabled: locked,
+  });
   scopeFieldsByRole(role, picker);
 
   // ---- password: an administrator sets it (service role, Edge Function) ----
@@ -493,7 +497,7 @@ function mountModal({ title, subtitle, body, actions, width }) {
  * `initialOutletId` preselects that outlet's region and the outlet itself
  * (used when editing an existing user).
  */
-function regionOutletPicker(tree, { initialOutletId, disabled = false } = {}) {
+function regionOutletPicker(tree, { initialOutletId, initialRegionId, disabled = false } = {}) {
   const initialOutlet = initialOutletId ? tree.outlets.find((o) => o.id === initialOutletId) : null;
   const region = h(
     'select',
@@ -502,6 +506,7 @@ function regionOutletPicker(tree, { initialOutletId, disabled = false } = {}) {
     ...tree.regions.map((r) => h('option', { value: r.id, selected: initialOutlet ? r.id === initialOutlet.region_id : false }, r.name)),
   );
   if (initialOutlet) region.value = initialOutlet.region_id;
+  else if (initialRegionId && tree.regions.some((r) => r.id === initialRegionId)) region.value = initialRegionId;
 
   const outlet = h('select', { required: true, disabled: true, 'aria-label': 'Outlet' });
   const count = h('span', { class: 'field-hint' }, 'Pick a region first');
@@ -601,7 +606,12 @@ function openCreateUser({ tree, users, viewer, onDone }) {
       );
 
   const status = h('div', {});
-  const picker = regionOutletPicker(tree, { initialOutletId: asLeader ? viewer.outlet_id : undefined, disabled: asLeader });
+  const picker = regionOutletPicker(tree, {
+    initialOutletId: asLeader ? viewer.outlet_id : undefined,
+    // A supervisor works in one region, so start there.
+    initialRegionId: viewer.region_id ?? undefined,
+    disabled: asLeader,
+  });
   scopeFieldsByRole(role, picker);
   const submit = h('button', { class: 'btn', type: 'submit' }, asLeader ? 'Create sales rep' : 'Create user');
 
