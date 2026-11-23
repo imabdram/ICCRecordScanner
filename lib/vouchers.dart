@@ -25,10 +25,15 @@ class Voucher {
   final double amount;
   final DateTime receivedAt;
 
+  /// True once the website has this voucher. Local totals never depend on it —
+  /// the phone shows what it read, upload or not.
+  final bool synced;
+
   const Voucher({
     required this.messageId,
     required this.amount,
     required this.receivedAt,
+    this.synced = false,
   });
 }
 
@@ -98,6 +103,37 @@ class VoucherStore {
     );
   }
 
+  /// Vouchers the website has not seen yet.
+  Future<List<Voucher>> pending() async {
+    final rows = await (await db).query(
+      'vouchers',
+      where: 'synced = 0',
+      orderBy: 'received_at asc',
+    );
+    return rows
+        .map((r) => Voucher(
+              messageId: (r['message_id'] ?? '') as String,
+              amount: (r['amount'] as num?)?.toDouble() ?? 0,
+              receivedAt: DateTime.tryParse((r['received_at'] ?? '') as String) ??
+                  DateTime.now(),
+            ))
+        .toList();
+  }
+
+  Future<void> markSynced(String messageId) async {
+    await (await db).update(
+      'vouchers',
+      {'synced': 1},
+      where: 'message_id = ?',
+      whereArgs: [messageId],
+    );
+  }
+
+  Future<int> unsentCount() async {
+    final r = await (await db).rawQuery('select count(*) as n from vouchers where synced = 0');
+    return (r.first['n'] as int?) ?? 0;
+  }
+
   Future<List<Voucher>> all() async {
     final rows = await (await db).query('vouchers', orderBy: 'received_at desc');
     return rows
@@ -106,6 +142,7 @@ class VoucherStore {
               amount: (r['amount'] as num?)?.toDouble() ?? 0,
               receivedAt: DateTime.tryParse((r['received_at'] ?? '') as String) ??
                   DateTime.now(),
+              synced: (r['synced'] as int? ?? 0) == 1,
             ))
         .toList();
   }

@@ -4,7 +4,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import 'main.dart' show AppConfig;
+import 'main.dart' show AppConfig, SyncService;
 import 'vouchers.dart';
 
 class VoucherSheet extends StatefulWidget {
@@ -56,6 +56,9 @@ class _VoucherSheetState extends State<VoucherSheet> {
 
       // Reads the inbox, parses, and stores anything new (dedup by SMS id).
       await SmsInbox.instance.sync();
+      // Then send whatever the website has not seen, so the leader's report fills
+      // in without the user having to find "Sync now".
+      unawaited(SyncService.instance.pushVouchers());
       final all = await VoucherStore.instance.all();
       if (!mounted) return;
       setState(() {

@@ -5,8 +5,8 @@
 // on the same path would fight over upgrades.
 import 'package:sqflite/sqflite.dart';
 
-/// Bump together with [_migrate] whenever a table changes.
-const int kDatabaseVersion = 5;
+/// Bump together with [migrateSchema] whenever a table changes.
+const int kDatabaseVersion = 6;
 
 Future<void> createSchema(Database db) async {
   await db.execute('''
@@ -34,6 +34,15 @@ Future<void> migrateSchema(Database db, int from) async {
   if (from < 5) {
     await _createVouchers(db);
   }
+  if (from < 6) {
+    // v6: vouchers can be uploaded to the website, so they need a sent flag.
+    final cols = await db.rawQuery('pragma table_info(vouchers)');
+    if (!cols.any((c) => c['name'] == 'synced')) {
+      await db.execute(
+        'alter table vouchers add column synced integer not null default 0',
+      );
+    }
+  }
 }
 
 Future<void> _createVouchers(Database db) async {
@@ -41,7 +50,8 @@ Future<void> _createVouchers(Database db) async {
     create table if not exists vouchers(
       message_id text primary key,
       amount real not null,
-      received_at text not null
+      received_at text not null,
+      synced integer not null default 0
     )
   ''');
   await db.execute(

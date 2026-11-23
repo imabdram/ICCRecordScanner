@@ -384,6 +384,45 @@ class SyncService {
     unawaited(pushNow());
   }
 
+  /// Uploads vouchers the website has not seen.
+  ///
+  /// The server enforces unique (rep, message_id), so a repeat upload is a
+  /// duplicate-key error — treated as "already sent" rather than a failure.
+  Future<void> pushVouchers() async {
+    final client = Supabase.instance.client;
+    if (client.auth.currentSession == null) return;
+    if (!await online) return;
+
+    try {
+      for (final voucher in await VoucherStore.instance.pending()) {
+        try {
+          await client.from('vouchers').insert({
+            'message_id': voucher.messageId,
+            'amount': voucher.amount,
+            'received_at': voucher.receivedAt.toUtc().toIso8601String(),
+          });
+          await VoucherStore.instance.markSynced(voucher.messageId);
+        } on PostgrestException catch (e) {
+          if (e.code == '23505') {
+            // Already on the server.
+            await VoucherStore.instance.markSynced(voucher.messageId);
+          }
+          // Anything else (RLS, network): leave it unsent for the next attempt.
+        } catch (_) {
+          // Offline mid-loop: stop quietly, the rest stay queued.
+          return;
+        }
+      }
+    } finally {
+      _notify();
+    }
+  }
+
+  /// Fire-and-forget after reading the inbox.
+  void pushVouchersSoon() {
+    unawaited(pushVouchers());
+  }
+
   /// Downloads the records this user may see and merges them into SQLite.
   ///
   /// RLS decides the scope: a sales rep gets their own scans, a team leader
@@ -434,6 +473,7 @@ class SyncService {
   /// Push then pull: used by pull-to-refresh and the drawer's "Sync now".
   Future<void> syncNow() async {
     await pushNow();
+    await pushVouchers();
     await pullNow();
   }
 }
