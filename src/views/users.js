@@ -337,6 +337,7 @@ function openEditUser(user, { tree, users, viewer, onSaved }) {
 
   const status = h('div', {});
   const picker = regionOutletPicker(tree, { initialOutletId: user.outlet_id, disabled: locked });
+  scopeFieldsByRole(role, picker);
 
   // ---- password: an administrator sets it (service role, Edge Function) ----
   const pwStatus = h('div', {});
@@ -538,6 +539,20 @@ function regionOutletPicker(tree, { initialOutletId, disabled = false } = {}) {
   return { el, region, outlet };
 }
 
+// A supervisor covers a whole region, so the outlet field is hidden and only the
+// region is required. Applied to both the create and the edit dialogs.
+function scopeFieldsByRole(role, picker) {
+  const outletField = picker.el.lastElementChild;
+  const sync = () => {
+    const isSupervisor = role.value === 'supervisor';
+    outletField.style.display = isSupervisor ? 'none' : '';
+    picker.outlet.required = !isSupervisor;
+  };
+  role.addEventListener('change', sync);
+  sync();
+  return sync;
+}
+
 function openCreateUser({ tree, users, viewer, onDone }) {
   // A team leader creates sales reps who work under them, in their own outlet,
   // with themselves as team leader by default. Everything else is fixed.
@@ -587,6 +602,7 @@ function openCreateUser({ tree, users, viewer, onDone }) {
 
   const status = h('div', {});
   const picker = regionOutletPicker(tree, { initialOutletId: asLeader ? viewer.outlet_id : undefined, disabled: asLeader });
+  scopeFieldsByRole(role, picker);
   const submit = h('button', { class: 'btn', type: 'submit' }, asLeader ? 'Create sales rep' : 'Create user');
 
   const modal = mountModal({
@@ -609,7 +625,9 @@ function openCreateUser({ tree, users, viewer, onDone }) {
               full_name: fullName.value.trim(),
               phone: phone.value.trim(),
               role: role.value,
-              outlet_id: picker.outlet.value || null,
+              // A supervisor is scoped by REGION, so the outlet is not required.
+              outlet_id: role.value === 'supervisor' ? null : picker.outlet.value || null,
+              region_id: picker.region.value || null,
               team_leader_id: leader.value || null,
             });
 

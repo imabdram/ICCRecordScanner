@@ -384,6 +384,8 @@ async function handleCreateUser(body: any, caller: any): Promise<Response> {
       phone: String(body.phone ?? '').trim(),
       role,
       outlet_id: outlet?.id ?? null,
+      // A supervisor is scoped by region, not outlet.
+      region_id: body.region_id ?? outlet?.region_id ?? null,
       team_leader_id: teamLeaderId,
       active: body.active === false ? false : true,
     })
