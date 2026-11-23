@@ -227,10 +227,11 @@ class SmsInbox {
         .toList();
   }
 
-  /// Reads, parses and caches. Returns how many new vouchers were stored.
+  /// Reads, parses and caches. Returns how many messages from [sender] were read,
+  /// so the page can show it — a zero is the quickest way to spot a permission or
+  /// sender-string problem.
   Future<int> sync({String sender = '913'}) async {
     final messages = await read(sender: sender);
-    var added = 0;
     for (final m in messages) {
       final voucher = parseVoucherMessage(
         (m['body'] ?? '') as String,
@@ -238,8 +239,7 @@ class SmsInbox {
       );
       if (voucher == null) continue;
       await VoucherStore.instance.save(voucher);
-      added += 1;
     }
-    return added;
+    return messages.length;
   }
 }

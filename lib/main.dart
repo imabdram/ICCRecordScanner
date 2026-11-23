@@ -39,7 +39,7 @@ import 'package:sqflite/sqflite.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'db_schema.dart';
-import 'voucher_sheet.dart';
+import 'voucher_page.dart';
 import 'vouchers.dart';
 
 // =============================================================================
@@ -960,11 +960,10 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _openVoucherSheet() async {
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      builder: (_) => const VoucherSheet(),
+  Future<void> _openVoucherPage() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const VoucherPage()),
     );
     await _refreshVoucherTotal();
   }
@@ -1005,7 +1004,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         voucherToday: _voucherToday,
         onVoucher: () async {
           Navigator.of(context).pop();
-          await _openVoucherSheet();
+          await _openVoucherPage();
         },
         onSync: () async {
           await SyncService.instance.syncNow();
