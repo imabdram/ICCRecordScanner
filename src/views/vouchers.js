@@ -1,5 +1,44 @@
 import { banner, card, fmtDate, fmtTime, h, icon, mount, roleName, skeletonPanel, table } from '../ui.js';
-import { fetchVoucherTotals } from '../data.js';
+import { fetchVoucherDaily, fetchVoucherTotals } from '../data.js';
+
+const MONTHS = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
+
+/**
+ * A bar per day of the current month — the same chart the app shows, so the two
+ * screens read identically. Days with nothing keep a thin tick, otherwise the
+ * gaps a supervisor is looking for would disappear.
+ */
+function monthBars(byDay) {
+  const now = new Date();
+  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  const values = Object.values(byDay);
+  const max = values.length ? Math.max(...values) : 0;
+
+  const cells = [];
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    const value = byDay[day] ?? 0;
+    const height = max ? Math.max(Math.round((value / max) * 100), 4) : 0;
+    const isToday = day === now.getDate();
+
+    cells.push(
+      h(
+        'div',
+        { class: 'day-bar-cell', title: `Day ${day}: $${value.toFixed(2)}` },
+        h('div', {
+          class: `day-bar${isToday ? ' today' : ''}${value ? '' : ' empty'}`,
+          style: { height: value ? `${height}%` : '2px' },
+        }),
+        isToday || day === 1 || day % 5 === 0
+          ? h('span', { class: `day-num${isToday ? ' today' : ''}` }, String(day))
+          : h('span', { class: 'day-num' }, ''),
+      ),
+    );
+  }
+  return h('div', { class: 'day-bars' }, ...cells);
+}
 
 /**
  * E-voucher report: airtime totals per sales rep, today and this month.
@@ -13,7 +52,7 @@ export async function renderVouchers(root, { profile }) {
   mount(root, h('div', {}, skeletonPanel(5)));
 
   try {
-    const rows = await fetchVoucherTotals();
+    const [rows, daily] = await Promise.all([fetchVoucherTotals(), fetchVoucherDaily()]);
 
     const money = (v) =>
       `$${Number(v ?? 0).toLocaleString(undefined, {
@@ -25,6 +64,16 @@ export async function renderVouchers(root, { profile }) {
     const monthTotal = rows.reduce((s, r) => s + Number(r.month_amount ?? 0), 0);
     const todayCount = rows.reduce((s, r) => s + Number(r.today_count ?? 0), 0);
     const activeToday = rows.filter((r) => Number(r.today_count ?? 0) > 0).length;
+
+    // Per-day amounts for the current month, across everyone in scope.
+    const now = new Date();
+    const byDay = {};
+    for (const row of daily) {
+      const day = new Date(row.day);
+      if (day.getFullYear() !== now.getFullYear() || day.getMonth() !== now.getMonth()) continue;
+      byDay[day.getDate()] = (byDay[day.getDate()] ?? 0) + Number(row.amount ?? 0);
+    }
+    const hasAny = rows.some((r) => Number(r.month_count ?? 0) > 0);
 
     const term = h('input', {
       type: 'search',
@@ -141,6 +190,27 @@ export async function renderVouchers(root, { profile }) {
             accent: 'accent-green',
             foot: `of ${rows.length} in scope`,
           }),
+        ),
+        h(
+          'div',
+          { class: 'panel' },
+          h(
+            'div',
+            { class: 'panel-head' },
+            h('h2', {}, `${MONTHS[now.getMonth()]} by day`),
+            h(
+              'span',
+              { class: 'hint' },
+              hasAny ? 'Airtime per day, everyone in your scope' : 'No vouchers uploaded yet',
+            ),
+          ),
+          hasAny
+            ? monthBars(byDay)
+            : h(
+                'div',
+                { class: 'empty' },
+                'The chart fills in once a rep opens E-voucher on the phone while online.',
+              ),
         ),
         h(
           'div',
