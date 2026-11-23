@@ -134,6 +134,42 @@ Location is stamped server-side from the person the scan is attributed to —
 never from the client. Two triggers enforce what policies cannot:
 `scans_before_write` and `users_guard_privileges` (blocking self-escalation).
 
+## E-voucher (app only)
+
+The phone totals airtime vouchers from the operator's "913" SMS messages. It is
+**not** a tab: it lives in the drawer and opens a sheet.
+
+```
+913 SMS -> parse -> SQLite vouchers -> today / this month + a bar per day
+```
+
+Parsing is deliberately narrow. From
+
+```
+You received Airtime from 252710000040 - mfsuser on 22/11/2026 18:46:41,
+TransactionID is ...; Amount is $+6.00. And you received commission $+0.00.
+Now your balance is $+6.15.
+```
+
+only **`Amount is $+...`** is summed. The commission and balance lines are
+ignored — adding either would inflate the total.
+
+| Detail | Behaviour |
+| --- | --- |
+| Messages read | every 913 message still in the inbox, not just new ones |
+| Duplicates | keyed by the SMS id, so re-reading never double-counts |
+| Timestamp | taken from inside the message, which is what "today" must mean |
+| Permission | `READ_SMS`, asked once when the sheet is first opened |
+| Totals | today and this month; a bar per day of the current month |
+
+`READ_SMS` is a high-trust permission: acceptable for a sideloaded APK, not
+something Google Play would allow. Vouchers stay **on the phone** for now; they
+are not uploaded.
+
+```bash
+flutter test          # 10 parser/summary cases, including the commission trap
+```
+
 ## Security model
 
 The publishable key (`sb_publishable_...`) ships inside the APK and the browser

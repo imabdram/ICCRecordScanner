@@ -1,6 +1,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+    <!-- E-voucher: reads the operator's 913 messages to total airtime per day.
+         Android rates this as a high-trust permission, so it is requested at
+         runtime only when the user opens the E-voucher sheet. -->
+    <uses-permission android:name="android.permission.READ_SMS" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <application
         android:allowBackup="false"

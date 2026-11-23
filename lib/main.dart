@@ -38,6 +38,10 @@ import 'package:share_plus/share_plus.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'db_schema.dart';
+import 'voucher_sheet.dart';
+import 'vouchers.dart';
+
 // =============================================================================
 // config
 // =============================================================================
@@ -211,31 +215,13 @@ class RecordStore {
   Future<Database> get db async {
     if (_db != null) return _db!;
     final dir = await getDatabasesPath();
+    // Shared schema with the voucher store (db_schema.dart): one file, one
+    // version, so the two cannot fight over upgrades.
     _db = await openDatabase(
       p.join(dir, 'icc_records.db'),
-      version: 4,
-      onCreate: (db, _) => db.execute('''
-        create table records(
-          id integer primary key autoincrement,
-          icc_id text not null unique,
-          full_name text not null,
-          primary_number text not null,
-          secondary_number text not null,
-          created_at text not null,
-          sync_status text not null default 'pending',
-          server_id text
-        )
-      '''),
-      onUpgrade: (db, from, to) async {
-        // v4 added server_id; older installs keep their scans.
-        if (from < 4) {
-          final cols = await db.rawQuery('pragma table_info(records)');
-          final hasServer = cols.any((c) => c['name'] == 'server_id');
-          if (!hasServer) {
-            await db.execute('alter table records add column server_id text');
-          }
-        }
-      },
+      version: kDatabaseVersion,
+      onCreate: (db, _) => createSchema(db),
+      onUpgrade: (db, from, _) => migrateSchema(db, from),
     );
     return _db!;
   }
@@ -903,6 +889,7 @@ class AppShell extends StatefulWidget {
 class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   int _index = 0;
   int _pending = 0;
+  double _voucherToday = 0;
   final _scaffoldKey = GlobalKey<ScaffoldState>();
   StreamSubscription<void>? _syncSub;
   StreamSubscription<List<ConnectivityResult>>? _netSub;
@@ -918,7 +905,28 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       }
     });
     _refreshPending();
+    _refreshVoucherTotal();
     SyncService.instance.pushSoon();
+  }
+
+  /// Today's e-voucher total, shown in the drawer without opening the sheet.
+  Future<void> _refreshVoucherTotal() async {
+    try {
+      final all = await VoucherStore.instance.all();
+      final summary = summariseVouchers(all);
+      if (mounted) setState(() => _voucherToday = summary.today);
+    } catch (_) {
+      // The sheet explains any real problem; the drawer stays at its last value.
+    }
+  }
+
+  Future<void> _openVoucherSheet() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => const VoucherSheet(),
+    );
+    await _refreshVoucherTotal();
   }
 
   @override
@@ -954,6 +962,11 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       drawer: _AppDrawer(
         profile: widget.profile,
         pending: _pending,
+        voucherToday: _voucherToday,
+        onVoucher: () async {
+          Navigator.of(context).pop();
+          await _openVoucherSheet();
+        },
         onSync: () async {
           await SyncService.instance.syncNow();
           await _refreshPending();
@@ -1011,6 +1024,8 @@ class _AppDrawer extends StatelessWidget {
   const _AppDrawer({
     required this.profile,
     required this.pending,
+    required this.voucherToday,
+    required this.onVoucher,
     required this.onSync,
     required this.onSettings,
     required this.onSignOut,
@@ -1018,6 +1033,8 @@ class _AppDrawer extends StatelessWidget {
 
   final Profile profile;
   final int pending;
+  final double voucherToday;
+  final Future<void> Function() onVoucher;
   final Future<void> Function() onSync;
   final Future<void> Function() onSettings;
   final Future<void> Function() onSignOut;
@@ -1111,6 +1128,20 @@ class _AppDrawer extends StatelessWidget {
               leading: const Icon(Icons.format_list_bulleted),
               title: const Text('Records'),
               onTap: () => Navigator.of(context).pop(),
+            ),
+            // E-voucher lives here rather than as a tab: it is a lookup, not a
+            // place you work. The subtitle shows today's total without opening it.
+            ListTile(
+              leading: const Icon(Icons.receipt_long_outlined,
+                  color: AppConfig.brandRed),
+              title: const Text('E-voucher',
+                  style: TextStyle(color: AppConfig.brandRed)),
+              subtitle: Text(
+                'Today  ${money(voucherToday)}',
+                style: const TextStyle(
+                    fontSize: 11.5, color: Color(0xFFAA3C46)),
+              ),
+              onTap: onVoucher,
             ),
             ListTile(
               leading: const Icon(Icons.settings_outlined),

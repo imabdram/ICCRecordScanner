@@ -91,3 +91,6 @@ tools/node_modules/
 
 # Export test scratch
 tools/.out/
+
+# Kotlin compiler scratch
+android/.kotlin/
