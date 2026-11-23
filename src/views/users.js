@@ -400,6 +400,9 @@ function openEditUser(user, { tree, users, viewer, onSaved }) {
             if (!locked) {
               patch.team_leader_id = leader.value || null;
               patch.outlet_id = picker.outlet.value || null;
+              // A supervisor has a region and no outlet, so the region must be
+              // saved explicitly — otherwise they keep seeing nothing.
+              patch.region_id = picker.region.value || null;
             }
             if (canSetRole && !locked) patch.role = role.value;
             if (locked) patch.team_leader_id = viewer.user_id;
