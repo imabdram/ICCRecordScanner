@@ -107,6 +107,36 @@ export async function fetchDeletions(limit = 300) {
 }
 
 /**
+ * E-voucher totals per rep: today, this month, and when the phone last uploaded.
+ *
+ * `last_received_at` doubles as a freshness signal: a rep with sales but no
+ * recent voucher has a phone that is not syncing, not a rep who stopped selling.
+ */
+export async function fetchVoucherTotals() {
+  return (
+    unwrap(
+      await supabase()
+        .from('v_voucher_totals')
+        .select('user_id,full_name,username,role,active,outlet_name,region_name,zone_name,today_amount,today_count,month_amount,month_count,last_received_at')
+        .order('month_amount', { ascending: false }),
+    ) ?? []
+  );
+}
+
+/** Per rep per day, for a chart or a CSV export. */
+export async function fetchVoucherDaily(limit = 1000) {
+  return (
+    unwrap(
+      await supabase()
+        .from('v_voucher_daily')
+        .select('sales_rep_id,sales_rep_name,outlet_name,day,amount,vouchers')
+        .order('day', { ascending: false })
+        .limit(limit),
+    ) ?? []
+  );
+}
+
+/**
  * Deletes a scan.
  *
  * Who may is enforced by the `scans_delete` policy: admin anywhere, supervisor

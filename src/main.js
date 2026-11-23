@@ -7,6 +7,7 @@ import { renderDashboard } from './views/dashboard.js';
 import { renderRecords } from './views/records.js';
 import { renderUsers } from './views/users.js';
 import { renderAudit } from './views/audit.js';
+import { renderVouchers } from './views/vouchers.js';
 import { renderSettings } from './views/settings.js';
 
 const root = $('#app');
@@ -25,6 +26,7 @@ const NAV = [
     // Reachable from Scan Records, not the sidebar: it is a rare lookup.
     hidden: true,
   },
+  { id: 'vouchers', label: 'E-vouchers', icon: 'records', render: renderVouchers },
   { id: 'users', label: 'Users & Team', icon: 'users', render: renderUsers },
   { id: 'settings', label: 'Settings', icon: 'key', render: renderSettings },
 ];
