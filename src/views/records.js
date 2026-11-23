@@ -3,6 +3,12 @@ import { deleteScan, fetchScans, fetchUsers } from '../data.js';
 import { filterScans } from '../filters.js';
 import { supabase, unwrap } from '../supabase.js';
 
+function isoToday() {
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+}
+
 /** Recent scans, newest first, filtered by RLS for this user's role. */
 export async function renderRecords(root, { profile, go }) {
   // The database policy decides who may delete; this only hides a control that
@@ -33,15 +39,18 @@ export async function renderRecords(root, { profile, go }) {
     // Filtering happens in the browser over the rows RLS already allowed. The
     // rep and outlet lists are derived from those rows, so the pickers can never
     // offer something the user is not allowed to see.
-    const state = { from: '', to: '', rep: '', outlet: '' };
+    // The page opens on today's scans: that is what a supervisor checks first.
+    // Reset clears the range, so seeing everything is one click away.
+    const today = isoToday();
+    const state = { from: today, to: today, rep: '', outlet: '' };
 
     const reps = [...new Map(scans.map((s) => [s.sales_rep_id, s.sales_rep_name])).entries()]
       .filter(([id, name]) => id && name)
       .sort((a, b) => String(a[1]).localeCompare(String(b[1])));
     const outlets = [...new Set(scans.map((s) => s.outlet_name).filter(Boolean))].sort();
 
-    const fromInput = h('input', { type: 'date', 'aria-label': 'From date' });
-    const toInput = h('input', { type: 'date', 'aria-label': 'To date' });
+    const fromInput = h('input', { type: 'date', 'aria-label': 'From date', value: today });
+    const toInput = h('input', { type: 'date', 'aria-label': 'To date', value: today });
     const repSelect = h(
       'select',
       { 'aria-label': 'Sales rep' },
@@ -76,10 +85,18 @@ export async function renderRecords(root, { profile, go }) {
     const draw = () => {
       const filtered = applyFilters(scans);
       const active = [state.from, state.to, state.rep, state.outlet].filter(Boolean).length;
-      countSlot.textContent =
-        filtered.length === scans.length
-          ? `${scans.length} scan(s)`
-          : `${filtered.length} of ${scans.length} scan(s) · ${active} filter(s)`;
+
+      // The default view is "today", so say that rather than "2 filters".
+      const todayOnly =
+        state.from === isoToday() && state.to === state.from && !state.rep && !state.outlet;
+
+      if (todayOnly) {
+        countSlot.textContent = `${filtered.length} scan(s) today · ${scans.length} in scope`;
+      } else if (filtered.length === scans.length) {
+        countSlot.textContent = `${scans.length} scan(s)`;
+      } else {
+        countSlot.textContent = `${filtered.length} of ${scans.length} scan(s) · ${active} filter(s)`;
+      }
       mount(
         tableSlot,
         table(
