@@ -72,8 +72,21 @@ export async function renderVouchers(root, { profile }) {
     const nameSel = select('Name', uniq(reps.map((r) => r.full_name || r.username)));
     const phoneSel = select('Phone No', uniq(reps.map((r) => phoneOf.get(r.user_id))));
 
+    // Date range: everything below (rows, days, footer) is scoped to it, so
+    // 'how much did this rep make between X and Y' is one answer.
+    const iso = (d) =>
+      d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    const nowDate = new Date();
+    const monthStart = iso(new Date(nowDate.getFullYear(), nowDate.getMonth(), 1));
+
+    const fromInput = h('input', { type: 'date', 'aria-label': 'From', value: monthStart });
+    const toInput = h('input', { type: 'date', 'aria-label': 'To', value: iso(nowDate) });
+    const rangeSlot = h('div', { class: 'range-sum' });
+
     const resetFilters = () => {
       nameSel.value = phoneSel.value = '';
+      fromInput.value = monthStart;
+      toInput.value = iso(nowDate);
       term.value = '';
       draw();
     };
@@ -114,12 +127,38 @@ export async function renderVouchers(root, { profile }) {
           .some((v) => String(v).toLowerCase().includes(q));
       });
 
+      const from = fromInput.value || '';
+      const to = toInput.value || '';
+      const inRange = (row) => {
+        const day = String(row.day).slice(0, 10);
+        if (from && day < from) return false;
+        if (to && day > to) return false;
+        return true;
+      };
+      const daysOf = (repId) => (byRep.get(repId) ?? []).filter(inRange);
+
+      let rangeAmount = 0;
+      let rangeVouchers = 0;
+      for (const rep of visible) {
+        for (const row of daysOf(rep.user_id)) {
+          rangeAmount += Number(row.amount ?? 0);
+          rangeVouchers += Number(row.vouchers ?? 0);
+        }
+      }
+
+      rangeSlot.replaceChildren(
+        h('span', { class: 'range-label' },
+          from || to ? (dayLabel(from || to) + ' – ' + dayLabel(to || from)) : 'All dates'),
+        h('span', { class: 'range-num' }, money(rangeAmount)),
+        h('span', { class: 'range-sub' }, rangeVouchers + ' voucher(s) · ' + visible.length + ' rep(s)'),
+      );
+
       drawFoot(visible);
 
       const nodes = visible.map((rep) => {
         const fresh = freshness(rep.last_received_at);
         const isOpen = openRep === rep.user_id;
-        const days = byRep.get(rep.user_id) ?? [];
+        const days = daysOf(rep.user_id);
 
         const row = h(
           'div',
@@ -181,7 +220,7 @@ export async function renderVouchers(root, { profile }) {
     };
 
     term.addEventListener('input', draw);
-    for (const el of [nameSel, phoneSel]) {
+    for (const el of [nameSel, phoneSel, fromInput, toInput]) {
       el.addEventListener('change', draw);
     }
 
@@ -215,6 +254,8 @@ export async function renderVouchers(root, { profile }) {
             { class: 'filters' },
             h('label', { class: 'filter' }, h('span', {}, 'Name'), nameSel),
             h('label', { class: 'filter' }, h('span', {}, 'Phone No'), phoneSel),
+            h('label', { class: 'filter' }, h('span', {}, 'From'), fromInput),
+            h('label', { class: 'filter' }, h('span', {}, 'To'), toInput),
             h(
               'div',
               { class: 'filter no-label' },
@@ -222,6 +263,7 @@ export async function renderVouchers(root, { profile }) {
               h('button', { class: 'btn secondary sm', type: 'button', onclick: resetFilters }, 'Reset filters'),
             ),
           ),
+          rangeSlot,
           listSlot,
           footSlot,
         ),
