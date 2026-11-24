@@ -94,3 +94,6 @@ tools/.out/
 
 # Kotlin compiler scratch
 android/.kotlin/
+
+# Headless-browser scratch
+.edge-profile/
