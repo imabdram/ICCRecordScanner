@@ -58,6 +58,26 @@ export async function renderVouchers(root, { profile }) {
 
     const term = h('input', { type: 'search', placeholder: 'Search rep or outlet…' });
 
+    // Filters are built from the rows already loaded, so an option can never
+    // select something outside the viewer's scope.
+    const uniq = (values) => [...new Set(values.filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b)));
+    const select = (label, values) =>
+      h(
+        'select',
+        { 'aria-label': label },
+        h('option', { value: '' }, 'All'),
+        ...values.map((v) => h('option', { value: v }, v)),
+      );
+
+    const nameSel = select('Name', uniq(reps.map((r) => r.full_name || r.username)));
+    const phoneSel = select('Phone No', uniq(reps.map((r) => phoneOf.get(r.user_id))));
+
+    const resetFilters = () => {
+      nameSel.value = phoneSel.value = '';
+      term.value = '';
+      draw();
+    };
+
     let openRep = null;
 
     const listSlot = h('div', { class: 'rep-list' });
@@ -85,13 +105,14 @@ export async function renderVouchers(root, { profile }) {
 
     const draw = async () => {
       const q = term.value.trim().toLowerCase();
-      const visible = q
-        ? reps.filter((r) =>
-            [r.full_name, r.username, r.outlet_name, r.region_name]
-              .filter(Boolean)
-              .some((v) => String(v).toLowerCase().includes(q)),
-          )
-        : reps;
+      const visible = reps.filter((r) => {
+        if (nameSel.value && (r.full_name || r.username) !== nameSel.value) return false;
+        if (phoneSel.value && (phoneOf.get(r.user_id) ?? '') !== phoneSel.value) return false;
+        if (!q) return true;
+        return [r.full_name, r.username, r.outlet_name, r.region_name]
+          .filter(Boolean)
+          .some((v) => String(v).toLowerCase().includes(q));
+      });
 
       drawFoot(visible);
 
@@ -160,6 +181,9 @@ export async function renderVouchers(root, { profile }) {
     };
 
     term.addEventListener('input', draw);
+    for (const el of [nameSel, phoneSel]) {
+      el.addEventListener('change', draw);
+    }
 
     mount(
       root,
@@ -186,6 +210,18 @@ export async function renderVouchers(root, { profile }) {
           'div',
           { class: 'panel' },
           h('div', { class: 'toolbar' }, h('div', { class: 'search' }, term)),
+          h(
+            'div',
+            { class: 'filters' },
+            h('label', { class: 'filter' }, h('span', {}, 'Name'), nameSel),
+            h('label', { class: 'filter' }, h('span', {}, 'Phone No'), phoneSel),
+            h(
+              'div',
+              { class: 'filter no-label' },
+              h('span', { 'aria-hidden': 'true' }, 'Reset'),
+              h('button', { class: 'btn secondary sm', type: 'button', onclick: resetFilters }, 'Reset filters'),
+            ),
+          ),
           listSlot,
           footSlot,
         ),
