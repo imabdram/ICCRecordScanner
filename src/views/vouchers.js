@@ -1,5 +1,5 @@
-import { card, fmtDate, fmtTime, h, mount, roleName, skeletonPanel } from '../ui.js';
-import { fetchUsers, fetchVoucherDaily, fetchVoucherEntries, fetchVoucherTotals } from '../data.js';
+import { card, h, mount, roleName, skeletonPanel } from '../ui.js';
+import { fetchUsers, fetchVoucherDaily, fetchVoucherTotals } from '../data.js';
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
@@ -59,8 +59,6 @@ export async function renderVouchers(root, { profile }) {
     const term = h('input', { type: 'search', placeholder: 'Search rep or outlet…' });
 
     let openRep = null;
-    let openDay = null;
-    const entries = new Map(); // `${rep}|${day}` -> rows
 
     const listSlot = h('div', { class: 'rep-list' });
     const footSlot = h('div', { class: 'rep-foot' });
@@ -122,68 +120,24 @@ export async function renderVouchers(root, { profile }) {
         );
         row.addEventListener('click', () => {
           openRep = isOpen ? null : rep.user_id;
-          openDay = null;
           draw();
         });
 
         if (!isOpen) return row;
 
+        // Days are read-only: the day total is the last level.
         const dayNodes = days.length
-          ? days.map((d) => {
-              const dayKey = String(d.day).slice(0, 10);
-              const isDayOpen = openDay === dayKey;
-              const dayRow = h(
+          ? days.map((d) =>
+              h(
                 'div',
-                { class: `day-row${isDayOpen ? ' open' : ''}` },
-                h('span', { class: 'day-caret' }, isDayOpen ? '▾' : '▸'),
+                { class: 'day-row' },
+                h('span', { class: 'day-caret' }),
                 h('span', { class: 'day-date' }, dayLabel(d.day)),
-                h('span', { class: 'day-count' }, `${d.vouchers} voucher(s)`),
+                h('span', { class: 'day-count' }, d.vouchers + ' voucher(s)'),
                 h('span', { class: 'day-amt' }, money(d.amount)),
-              );
-              dayRow.addEventListener('click', async (event) => {
-                event.stopPropagation();
-                openDay = isDayOpen ? null : dayKey;
-                await draw();
-              });
-
-              if (!isDayOpen) return dayRow;
-
-              const key = `${rep.user_id}|${dayKey}`;
-              if (!entries.has(key)) {
-                entries.set(key, null); // mark loading
-                fetchVoucherEntries(rep.user_id, dayKey)
-                  .then((rows) => {
-                    entries.set(key, rows);
-                    if (openDay === dayKey) draw();
-                  })
-                  .catch(() => entries.set(key, []));
-              }
-              const rows = entries.get(key);
-              const tx = rows
-                ? rows.map((r) =>
-                    h(
-                      'div',
-                      { class: 'tx-row' },
-                      h('span', { class: 'tx-time' }, fmtTime(r.received_at)),
-                      h('span', { class: 'tx-plus' }, `+${money(r.amount)}`),
-                    ),
-                  )
-                : [h('div', { class: 'tx-row muted' }, 'Loading…')];
-
-              return h(
-                'div',
-                {},
-                dayRow,
-                h(
-                  'div',
-                  { class: 'tx-block' },
-                  h('div', { class: 'tx-head' }, 'Transactions that day'),
-                  ...tx,
-                ),
-              );
-            })
+              ),
+            )
           : [h('div', { class: 'day-row muted' }, 'No vouchers this month.')];
-
         return h('div', { class: 'rep-open' }, row, h('div', { class: 'day-block' }, ...dayNodes));
       });
 
