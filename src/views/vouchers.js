@@ -1,6 +1,15 @@
 import { card, fmtDate, fmtTime, h, mount, roleName, skeletonPanel } from '../ui.js';
 import { fetchUsers, fetchVoucherDaily, fetchVoucherEntries, fetchVoucherTotals } from '../data.js';
 
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+/** '2026-11-24' -> '24 Nov' with no timezone drift. */
+function dayLabel(value) {
+  const iso = String(value ?? '').slice(0, 10).split('-');
+  if (iso.length !== 3) return String(value ?? '');
+  return String(Number(iso[2])) + ' ' + MONTHS[Number(iso[1]) - 1];
+}
+
 const money = (v) =>
   `$${Number(v ?? 0).toLocaleString(undefined, {
     minimumFractionDigits: 2,
@@ -127,7 +136,7 @@ export async function renderVouchers(root, { profile }) {
                 'div',
                 { class: `day-row${isDayOpen ? ' open' : ''}` },
                 h('span', { class: 'day-caret' }, isDayOpen ? '▾' : '▸'),
-                h('span', { class: 'day-date' }, fmtDate(d.day)),
+                h('span', { class: 'day-date' }, dayLabel(d.day)),
                 h('span', { class: 'day-count' }, `${d.vouchers} voucher(s)`),
                 h('span', { class: 'day-amt' }, money(d.amount)),
               );
@@ -161,7 +170,17 @@ export async function renderVouchers(root, { profile }) {
                   )
                 : [h('div', { class: 'tx-row muted' }, 'Loading…')];
 
-              return h('div', {}, dayRow, h('div', { class: 'tx-block' }, ...tx));
+              return h(
+                'div',
+                {},
+                dayRow,
+                h(
+                  'div',
+                  { class: 'tx-block' },
+                  h('div', { class: 'tx-head' }, 'Transactions that day'),
+                  ...tx,
+                ),
+              );
             })
           : [h('div', { class: 'day-row muted' }, 'No vouchers this month.')];
 
