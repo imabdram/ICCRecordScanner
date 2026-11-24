@@ -169,3 +169,23 @@ export function summarise(rows) {
   const total = rows.reduce((sum, r) => sum + Number(r.scans_total ?? 0), 0);
   return { scansToday: today, scansTotal: total, people: rows.length };
 }
+
+/** Individual voucher rows for one rep on one day (the second drill-down). */
+export async function fetchVoucherEntries(repId, day) {
+  const start = new Date(day);
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 1);
+
+  return (
+    unwrap(
+      await supabase()
+        .from('vouchers')
+        .select('received_at,amount')
+        .eq('sales_rep_id', repId)
+        .gte('received_at', start.toISOString())
+        .lt('received_at', end.toISOString())
+        .order('received_at', { ascending: false }),
+    ) ?? []
+  );
+}
