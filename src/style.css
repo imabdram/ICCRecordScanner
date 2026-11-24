@@ -834,10 +834,11 @@ svg.ico > * {
 }
 .day-num.today { color: var(--red); font-weight: 700; }
 /* ------------------------------------------------------- e-voucher master list */
-.rep-list { border-top: 1px solid var(--line); }
+.rep-list { border-top: 1px solid var(--line); overflow-x: auto; }
+.rep-row { min-width: 1040px; }
 .rep-row {
   display: grid;
-  grid-template-columns: 18px minmax(160px, 1.6fr) 110px 120px 90px 110px;
+  grid-template-columns: 18px minmax(150px, 1.4fr) 110px minmax(120px, 1fr) minmax(110px, .9fr) 95px 110px 82px 104px;
   align-items: center;
   gap: 8px;
   padding: 11px 4px;
@@ -860,6 +861,7 @@ svg.ico > * {
 .rep-title { font-weight: 600; }
 .rep-sub { font-size: 11px; color: var(--muted); }
 .rep-num, .day-amt { text-align: right; font-variant-numeric: tabular-nums; }
+.rep-mid { color: var(--muted); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rep-num.strong { font-weight: 700; }
 .rep-count { text-align: right; color: var(--muted); font-size: 12.5px; }
 .badge {
@@ -901,7 +903,8 @@ svg.ico > * {
 .day-row.muted, .tx-row.muted { color: var(--muted); cursor: default; }
 .rep-foot {
   display: grid;
-  grid-template-columns: 1fr 110px 120px 150px;
+  grid-template-columns: 1fr 95px 110px 150px;
+  min-width: 1040px;
   gap: 8px;
   align-items: center;
   padding: 12px 4px 2px;

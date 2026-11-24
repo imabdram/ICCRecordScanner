@@ -1,5 +1,5 @@
 import { card, fmtDate, fmtTime, h, mount, roleName, skeletonPanel } from '../ui.js';
-import { fetchVoucherDaily, fetchVoucherEntries, fetchVoucherTotals } from '../data.js';
+import { fetchUsers, fetchVoucherDaily, fetchVoucherEntries, fetchVoucherTotals } from '../data.js';
 
 const money = (v) =>
   `$${Number(v ?? 0).toLocaleString(undefined, {
@@ -25,7 +25,14 @@ export async function renderVouchers(root, { profile }) {
   mount(root, h('div', {}, skeletonPanel(5)));
 
   try {
-    const [totals, daily] = await Promise.all([fetchVoucherTotals(), fetchVoucherDaily(5000)]);
+    const [totals, daily, users] = await Promise.all([
+      fetchVoucherTotals(),
+      fetchVoucherDaily(5000),
+      fetchUsers(),
+    ]);
+
+    // The totals view has no phone column, so the number comes from users.
+    const phoneOf = new Map(users.map((u) => [u.id, u.phone]));
 
     const reps = [...totals].sort(
       (a, b) => Number(b.month_amount ?? 0) - Number(a.month_amount ?? 0),
@@ -94,8 +101,11 @@ export async function renderVouchers(root, { profile }) {
             'span',
             { class: 'rep-name' },
             h('span', { class: 'rep-title' }, rep.full_name || rep.username),
-            h('span', { class: 'rep-sub' }, rep.outlet_name ?? '—'),
+            h('span', { class: 'rep-sub' }, rep.username ?? ''),
           ),
+          h('span', { class: 'rep-mid' }, phoneOf.get(rep.user_id) ?? '—'),
+          h('span', { class: 'rep-mid' }, rep.outlet_name ?? '—'),
+          h('span', { class: 'rep-mid' }, rep.region_name ?? '—'),
           h('span', { class: 'rep-num' }, money(rep.today_amount)),
           h('span', { class: 'rep-num strong' }, money(rep.month_amount)),
           h('span', { class: 'rep-count' }, String(rep.month_count ?? 0)),
@@ -164,6 +174,9 @@ export async function renderVouchers(root, { profile }) {
           { class: 'rep-row head' },
           h('span', { class: 'rep-caret' }),
           h('span', { class: 'rep-name' }, 'Sales rep'),
+          h('span', { class: 'rep-mid' }, 'Number'),
+          h('span', { class: 'rep-mid' }, 'Outlet'),
+          h('span', { class: 'rep-mid' }, 'Region'),
           h('span', { class: 'rep-num' }, 'Today'),
           h('span', { class: 'rep-num' }, 'This month'),
           h('span', { class: 'rep-count' }, 'Vouchers'),
