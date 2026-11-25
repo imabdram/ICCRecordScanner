@@ -65,7 +65,6 @@ export async function renderVouchers(root, { profile }) {
     const nowDate = new Date();
     const from = iso(new Date(nowDate.getFullYear(), nowDate.getMonth(), 1));
     const to = iso(nowDate);
-    const rangeSlot = h('div', { class: 'range-sum' });
 
     let openRep = null;
 
@@ -107,22 +106,6 @@ export async function renderVouchers(root, { profile }) {
         return day >= from && day <= to;
       };
       const daysOf = (repId) => (byRep.get(repId) ?? []).filter(inRange);
-
-      let rangeAmount = 0;
-      let rangeVouchers = 0;
-      for (const rep of visible) {
-        for (const row of daysOf(rep.user_id)) {
-          rangeAmount += Number(row.amount ?? 0);
-          rangeVouchers += Number(row.vouchers ?? 0);
-        }
-      }
-
-      rangeSlot.replaceChildren(
-        h('span', { class: 'range-label' },
-          from || to ? (dayLabel(from || to) + ' – ' + dayLabel(to || from)) : 'All dates'),
-        h('span', { class: 'range-num' }, money(rangeAmount)),
-        h('span', { class: 'range-sub' }, rangeVouchers + ' voucher(s) · ' + visible.length + ' rep(s)'),
-      );
 
       drawFoot(visible);
 
@@ -224,7 +207,6 @@ export async function renderVouchers(root, { profile }) {
           'div',
           { class: 'panel' },
           h('div', { class: 'toolbar' }, h('div', { class: 'search' }, term)),
-          rangeSlot,
           listSlot,
           footSlot,
         ),
