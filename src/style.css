@@ -860,7 +860,7 @@ svg.ico > * {
 .rep-name { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .rep-title { font-weight: 600; }
 .rep-sub { font-size: 11px; color: var(--muted); }
-.rep-num, .day-amt { text-align: right; font-variant-numeric: tabular-nums; }
+.rep-num, .day-amt { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
 .rep-mid { color: var(--muted); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rep-num.strong { font-weight: 700; }
 .rep-count { text-align: right; color: var(--muted); font-size: 12.5px; }
@@ -875,10 +875,10 @@ svg.ico > * {
 .badge.ok { background: #eaf6ee; color: #1f7a3d; }
 .badge.warn { background: #fdf3e2; color: #9a6412; }
 .badge.bad { background: #fdecee; color: #b3261e; }
-.day-block { padding: 2px 0 8px 26px; }
+.day-block { padding: 2px 0 8px; }
 .day-row {
   display: grid;
-  grid-template-columns: 16px 110px 1fr 100px;
+  grid-template-columns: 18px minmax(150px, 1.4fr) 110px minmax(120px, 1fr) minmax(110px, .9fr) 95px 110px 82px 104px;
   align-items: center;
   gap: 8px;
   padding: 7px 4px;
@@ -888,8 +888,8 @@ svg.ico > * {
 }
 .day-row:hover { background: #fbfcfd; }
 .day-caret { color: var(--muted); font-size: 10px; }
-.day-date { color: var(--ink); }
-.day-count { color: var(--muted); font-size: 12px; }
+.day-date { color: var(--ink); padding-left: 14px; }
+.day-count { color: var(--muted); font-size: 12px; text-align: right; font-variant-numeric: tabular-nums; }
 .tx-block { padding: 2px 0 6px 24px; }
 .tx-row {
   display: flex;

@@ -58,38 +58,14 @@ export async function renderVouchers(root, { profile }) {
 
     const term = h('input', { type: 'search', placeholder: 'Search rep or outlet…' });
 
-    // Filters are built from the rows already loaded, so an option can never
-    // select something outside the viewer's scope.
-    const uniq = (values) => [...new Set(values.filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b)));
-    const select = (label, values) =>
-      h(
-        'select',
-        { 'aria-label': label },
-        h('option', { value: '' }, 'All'),
-        ...values.map((v) => h('option', { value: v }, v)),
-      );
-
-    const nameSel = select('Name', uniq(reps.map((r) => r.full_name || r.username)));
-    const phoneSel = select('Phone No', uniq(reps.map((r) => phoneOf.get(r.user_id))));
-
-    // Date range: everything below (rows, days, footer) is scoped to it, so
-    // 'how much did this rep make between X and Y' is one answer.
+    // The month range is fixed: the filters were removed because the date
+    // columns and the search box already answer the common questions.
     const iso = (d) =>
       d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
     const nowDate = new Date();
-    const monthStart = iso(new Date(nowDate.getFullYear(), nowDate.getMonth(), 1));
-
-    const fromInput = h('input', { type: 'date', 'aria-label': 'From', value: monthStart });
-    const toInput = h('input', { type: 'date', 'aria-label': 'To', value: iso(nowDate) });
+    const from = iso(new Date(nowDate.getFullYear(), nowDate.getMonth(), 1));
+    const to = iso(nowDate);
     const rangeSlot = h('div', { class: 'range-sum' });
-
-    const resetFilters = () => {
-      nameSel.value = phoneSel.value = '';
-      fromInput.value = monthStart;
-      toInput.value = iso(nowDate);
-      term.value = '';
-      draw();
-    };
 
     let openRep = null;
 
@@ -118,22 +94,17 @@ export async function renderVouchers(root, { profile }) {
 
     const draw = async () => {
       const q = term.value.trim().toLowerCase();
-      const visible = reps.filter((r) => {
-        if (nameSel.value && (r.full_name || r.username) !== nameSel.value) return false;
-        if (phoneSel.value && (phoneOf.get(r.user_id) ?? '') !== phoneSel.value) return false;
-        if (!q) return true;
-        return [r.full_name, r.username, r.outlet_name, r.region_name]
-          .filter(Boolean)
-          .some((v) => String(v).toLowerCase().includes(q));
-      });
+      const visible = reps.filter(
+        (r) =>
+          !q ||
+          [r.full_name, r.username, r.outlet_name, r.region_name]
+            .filter(Boolean)
+            .some((v) => String(v).toLowerCase().includes(q)),
+      );
 
-      const from = fromInput.value || '';
-      const to = toInput.value || '';
       const inRange = (row) => {
         const day = String(row.day).slice(0, 10);
-        if (from && day < from) return false;
-        if (to && day > to) return false;
-        return true;
+        return day >= from && day <= to;
       };
       const daysOf = (repId) => (byRep.get(repId) ?? []).filter(inRange);
 
@@ -193,8 +164,15 @@ export async function renderVouchers(root, { profile }) {
                 { class: 'day-row' },
                 h('span', { class: 'day-caret' }),
                 h('span', { class: 'day-date' }, dayLabel(d.day)),
-                h('span', { class: 'day-count' }, d.vouchers + ' voucher(s)'),
+                // Empty cells keep the amount under the Today column and the
+                // count under Vouchers, instead of drifting to the far right.
+                h('span', {}),
+                h('span', {}),
+                h('span', {}),
                 h('span', { class: 'day-amt' }, money(d.amount)),
+                h('span', {}),
+                h('span', { class: 'day-count' }, String(d.vouchers ?? 0)),
+                h('span', {}),
               ),
             )
           : [h('div', { class: 'day-row muted' }, 'No vouchers this month.')];
@@ -220,9 +198,6 @@ export async function renderVouchers(root, { profile }) {
     };
 
     term.addEventListener('input', draw);
-    for (const el of [nameSel, phoneSel, fromInput, toInput]) {
-      el.addEventListener('change', draw);
-    }
 
     mount(
       root,
@@ -249,20 +224,6 @@ export async function renderVouchers(root, { profile }) {
           'div',
           { class: 'panel' },
           h('div', { class: 'toolbar' }, h('div', { class: 'search' }, term)),
-          h(
-            'div',
-            { class: 'filters' },
-            h('label', { class: 'filter' }, h('span', {}, 'Name'), nameSel),
-            h('label', { class: 'filter' }, h('span', {}, 'Phone No'), phoneSel),
-            h('label', { class: 'filter' }, h('span', {}, 'From'), fromInput),
-            h('label', { class: 'filter' }, h('span', {}, 'To'), toInput),
-            h(
-              'div',
-              { class: 'filter no-label' },
-              h('span', { 'aria-hidden': 'true' }, 'Reset'),
-              h('button', { class: 'btn secondary sm', type: 'button', onclick: resetFilters }, 'Reset filters'),
-            ),
-          ),
           rangeSlot,
           listSlot,
           footSlot,
