@@ -8,6 +8,7 @@ import { renderRecords } from './views/records.js';
 import { renderUsers } from './views/users.js';
 import { renderAudit } from './views/audit.js';
 import { renderVouchers } from './views/vouchers.js';
+import { renderVoucherReports } from './views/voucher-reports.js';
 import { renderSettings } from './views/settings.js';
 
 const root = $('#app');
@@ -27,6 +28,12 @@ const NAV = [
     hidden: true,
   },
   { id: 'vouchers', label: 'E-vouchers', icon: 'records', render: renderVouchers },
+  {
+    id: 'voucher-reports',
+    label: 'Daily E-Voucher Reports',
+    icon: 'dashboard',
+    render: renderVoucherReports,
+  },
   { id: 'users', label: 'Users & Team', icon: 'users', render: renderUsers },
   { id: 'settings', label: 'Settings', icon: 'key', render: renderSettings },
 ];

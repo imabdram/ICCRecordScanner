@@ -189,3 +189,19 @@ export async function fetchVoucherEntries(repId, day) {
     ) ?? []
   );
 }
+/**
+ * Per-rep per-day vouchers already bucketed into Africa/Mogadishu days.
+ * One row = one rep on one day; the report builder fills the empty days.
+ */
+export async function fetchVoucherDailyLocal(from, to, limit = 5000) {
+  let query = supabase()
+    .from('v_voucher_daily_local')
+    .select('sales_rep_id,sales_rep_name,outlet_name,region_name,day,amount,vouchers')
+    .order('day', { ascending: true })
+    .limit(limit);
+
+  if (from) query = query.gte('day', from);
+  if (to) query = query.lte('day', to);
+
+  return unwrap(await query) ?? [];
+}

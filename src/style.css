@@ -947,3 +947,36 @@ svg.ico > * {
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
+
+/* ------------------------------------------------- daily e-voucher reports */
+.segment { display: inline-flex; border: 1px solid var(--line-strong); border-radius: 10px; overflow: hidden; }
+.segment .seg {
+  border: 0;
+  background: #fff;
+  padding: 9px 16px;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  color: var(--ink);
+}
+.segment .seg + .seg { border-left: 1px solid var(--line-strong); }
+.segment .seg.active { background: var(--red); color: #fff; font-weight: 600; }
+
+.report-table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+.report-table th, .report-table td { padding: 10px 12px; border-bottom: 1px solid var(--line); text-align: left; }
+.report-table th { font-size: 10.5px; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+.report-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+.report-table .strong { font-weight: 700; }
+.report-table tfoot td { border-top: 2px solid var(--line-strong); border-bottom: none; font-weight: 700; }
+.report-table tr.clickable { cursor: pointer; }
+.report-table tr.clickable:hover { background: #fafbfc; }
+.report-table tr.empty-row td { color: var(--muted); }
+.report-table tr.detail-row > td { background: #fbfcfd; padding: 0 12px 8px 24px; }
+.report-table.nested { margin-top: 6px; }
+.report-table.nested th, .report-table.nested td { padding: 7px 10px; font-size: 12.5px; }
+
+@media print {
+  .sidebar, .topbar, .filters, .row-actions, .cards, .toast { display: none !important; }
+  .panel { border: 0; box-shadow: none; }
+  body { background: #fff; }
+}

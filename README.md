@@ -170,6 +170,22 @@ are not uploaded.
 flutter test          # 10 parser/summary cases, including the commission trap
 ```
 
+## Daily E-Voucher Reports (website)
+
+A separate page from the E-vouchers dashboard, built for checking a period:
+
+- **Individual** or **Whole Team** report, over any start/end date
+- every day of the range is listed, **including days with no sales** (`$0.00`)
+- team rows expand to show each rep's contribution for that day
+- summary cards: total amount, total vouchers, active reps, average per day
+- Export to Excel, print, and PDF (via the browser's "Save as PDF")
+
+Days come from `v_voucher_daily_local`, which converts to `Africa/Mogadishu`
+before truncating — otherwise a 01:30 local voucher lands on the previous day.
+Permissions are unchanged: the views are `security_invoker`, so RLS decides what
+each role can see.
+
+`scripts/schema_v14_voucher_reports.sql` must be applied.
 ## Security model
 
 The publishable key (`sb_publishable_...`) ships inside the APK and the browser
