@@ -330,25 +330,31 @@ export async function renderVouchers(root, { profile }) {
       );
     }
 
-    const dayRows = rep.days === 0
-      ? []
-      : rows
-          .filter(
-            (row) =>
-              row.sales_rep_id === rep.id &&
-              String(row.day).slice(0, 10) >= state.from &&
-              String(row.day).slice(0, 10) <= state.to,
-          )
-          .sort((a, b) => (String(a.day) < String(b.day) ? 1 : -1))
-          .map((row) =>
-            h(
-              'tr',
-              {},
-              h('td', {}, dayLabel(row.day)),
-              h('td', { class: 'num' }, String(row.vouchers ?? 0)),
-              h('td', { class: 'num' }, money(row.amount)),
-            ),
-          );
+    // Every day of the range, newest first. A day with nothing must show as 0:
+    // a gap is the finding, and skipping it hides that.
+    const byDay = new Map();
+    for (const row of rows) {
+      if (row.sales_rep_id !== rep.id) continue;
+      const day = String(row.day).slice(0, 10);
+      if (day < state.from || day > state.to) continue;
+      const current = byDay.get(day) ?? { vouchers: 0, amount: 0 };
+      current.vouchers += Number(row.vouchers ?? 0);
+      current.amount += Number(row.amount ?? 0);
+      byDay.set(day, current);
+    }
+
+    const dayRows = eachDay(state.from, state.to)
+      .reverse()
+      .map((day) => {
+        const found = byDay.get(day) ?? { vouchers: 0, amount: 0 };
+        return h(
+          'tr',
+          { class: found.vouchers ? '' : 'empty-row' },
+          h('td', {}, dayLabel(day)),
+          h('td', { class: 'num' }, String(found.vouchers)),
+          h('td', { class: 'num' }, money(found.amount)),
+        );
+      });
 
     return h(
       'div',

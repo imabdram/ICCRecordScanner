@@ -1107,10 +1107,9 @@ svg.ico > * {
 .report-table.nested th, .report-table.nested td { padding: 7px 10px; font-size: 12.5px; }
 
 @media print {
-  /* Aim: one page. Landscape because the reports are wider than they are tall,
-     and every block that is not the report itself is removed rather than merely
-     hidden behind a scrollbar. */
-  @page { size: A4 landscape; margin: 8mm; }
+  /* Aim: one page, portrait. Every block that is not the report itself is removed
+     rather than merely hidden behind a scrollbar. */
+  @page { size: A4 portrait; margin: 7mm; }
 
   html, body { background: #fff !important; font-size: 10.5px; }
   .sidebar, .topbar, .scrim, .filters, .row-actions, .cards,
@@ -1119,17 +1118,17 @@ svg.ico > * {
   .content { padding: 0 !important; margin: 0 !important; }
   .panel { border: 0 !important; box-shadow: none !important; margin: 0 0 4px !important; padding: 0 !important; }
   .page-head { margin: 0 0 4px !important; }
-  .page-head h1 { font-size: 14px !important; margin: 0 0 1px !important; }
-  .page-head .sub { font-size: 9px !important; margin: 0 !important; color: #444 !important; }
+  .page-head h1 { font-size: 13px !important; margin: 0 0 1px !important; }
+  .page-head .sub { font-size: 8.5px !important; margin: 0 !important; color: #444 !important; }
   .hint { font-size: 9px !important; }
 
-  .report-table { width: 100% !important; font-size: 9.5px; border-collapse: collapse; }
+  .report-table { width: 100% !important; font-size: 8.5px; line-height: 1.15; border-collapse: collapse; }
   .report-table th,
-  .report-table td { padding: 2px 5px !important; border-color: #ddd !important; }
-  .report-table th { font-size: 8px !important; letter-spacing: 0 !important; }
+  .report-table td { padding: 1px 4px !important; border-color: #e5e5e5 !important; }
+  .report-table th { font-size: 7.5px !important; letter-spacing: 0 !important; padding-bottom: 2px !important; }
   .report-table tfoot td { border-top: 1px solid #333 !important; }
   .report-table tr { page-break-inside: avoid; break-inside: avoid; }
-  .report-table tr.detail-row > td { padding-left: 14px !important; background: #fff !important; }
+  .report-table tr.detail-row > td { padding: 1px 4px 1px 14px !important; background: #fff !important; }
   .report-table tr.detail-row .detail-name { padding-left: 18px !important; }
   .report-table tr.detail-row .detail-name::before { left: 6px !important; }
 
