@@ -396,6 +396,98 @@ export async function renderVouchers(root, { profile }) {
     );
   }
 
+  // ---- pdf -----------------------------------------------------------------
+  /**
+   * A real PDF of whatever the current tab shows, so it can be mailed or filed
+   * without going through the print dialog.
+   */
+  async function exportPdf() {
+    const [{ jsPDF }, autoTableModule] = await Promise.all([
+      import('jspdf'),
+      import('jspdf-autotable'),
+    ]);
+    const autoTable = autoTableModule.default ?? autoTableModule.autoTable;
+
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const phonesMap = phones();
+    const list = byRep();
+
+    let title = 'E-vouchers';
+    let head = [];
+    let body = [];
+
+    if (state.tab === 'team') {
+      head = [['Sales rep', 'Number', 'Today', 'In range', 'Vouchers', 'Last day']];
+      body = list.map((rep) => [
+        rep.name ?? '—',
+        phonesMap.get(rep.id) ?? '',
+        money(rep.today),
+        money(rep.range),
+        String(rep.vouchers),
+        dayLabel(rep.lastDay) || 'never',
+      ]);
+      const t = totals(list);
+      body.push(['TOTAL', '', money(t.today), money(t.amount), String(t.vouchers), '']);
+    } else if (state.tab === 'days') {
+      title = 'E-vouchers · by day';
+      head = [['Day', 'Reps', 'Vouchers', 'Amount']];
+      const team = buildTeam(rows, state.from, state.to);
+      body = [...team.rows].reverse().map((day) => [
+        dayLabel(day.day),
+        String(day.byRep.length),
+        String(day.vouchers),
+        money(day.amount),
+      ]);
+      body.push(['TOTAL', '', String(team.totals.vouchers), money(team.totals.amount)]);
+    } else {
+      const rep = list.find((r) => r.id === state.repId);
+      title = `E-vouchers · ${rep?.name ?? 'individual'}`;
+      head = [['Day', 'Vouchers', 'Amount']];
+      const byDay = new Map();
+      for (const row of rows) {
+        if (row.sales_rep_id !== state.repId) continue;
+        const day = String(row.day).slice(0, 10);
+        const current = byDay.get(day) ?? { vouchers: 0, amount: 0 };
+        current.vouchers += Number(row.vouchers ?? 0);
+        current.amount += Number(row.amount ?? 0);
+        byDay.set(day, current);
+      }
+      let vouchers = 0;
+      let amount = 0;
+      for (const day of eachDay(state.from, state.to).reverse()) {
+        const found = byDay.get(day) ?? { vouchers: 0, amount: 0 };
+        vouchers += found.vouchers;
+        amount += found.amount;
+        body.push([dayLabel(day), String(found.vouchers), money(found.amount)]);
+      }
+      body.push(['TOTAL', String(vouchers), money(amount)]);
+    }
+
+    doc.setFontSize(13);
+    doc.text(title, 14, 16);
+    doc.setFontSize(9);
+    doc.setTextColor(120);
+    doc.text(`${dayLabel(state.from)} – ${dayLabel(state.to)}`, 14, 22);
+
+    autoTable(doc, {
+      head,
+      body,
+      startY: 27,
+      styles: { fontSize: 8, cellPadding: 1.6 },
+      headStyles: { fillColor: [227, 6, 19], textColor: 255, fontSize: 8 },
+      columnStyles: {
+        [head[0].length - 1]: { halign: 'right' },
+        [head[0].length - 2]: { halign: 'right' },
+      },
+      didParseCell: (data) => {
+        if (data.section === 'body' && data.row.index === body.length - 1) {
+          data.cell.styles.fontStyle = 'bold';
+        }
+      },
+    });
+
+    doc.save(`e-vouchers-${state.tab}-${state.from}_${state.to}.pdf`);
+  }
   // ---- chrome --------------------------------------------------------------
   function tabButton(value, label) {
     return h(
@@ -450,6 +542,7 @@ export async function renderVouchers(root, { profile }) {
         h(
           'div',
           { class: 'page-actions', style: { display: 'flex', gap: '8px' } },
+          h('button', { class: 'btn secondary', type: 'button', onclick: exportPdf }, 'PDF'),
           h('button', { class: 'btn secondary', type: 'button', onclick: () => window.print() }, 'Print'),
         ),
       ),
