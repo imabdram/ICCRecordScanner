@@ -229,7 +229,7 @@ export async function fetchRepSimReport() {
     unwrap(
       await supabase()
         .from('v_rep_sim_report')
-        .select('user_id,full_name,username,role,active,outlet_name,region_name,team_leader_name,sims_today,sims_month,sims_total,last_scan_at')
+        .select('user_id,full_name,username,role,active,outlet_id,outlet_name,region_name,team_leader_name,sims_today,sims_month,sims_total,last_scan_at')
         .order('sims_month', { ascending: false }),
     ) ?? []
   );
