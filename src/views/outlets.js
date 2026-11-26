@@ -93,6 +93,12 @@ export async function renderOutlets(root, { profile }) {
         h(
           'div',
           { class: 'panel' },
+          h('h2', { style: { margin: '0 0 4px', fontSize: '16px' } }, 'Outlets · people and e-vouchers'),
+          h(
+            'p',
+            { class: 'sub', style: { margin: '0 0 12px' } },
+            'Every outlet in your region, with its team and e-voucher totals',
+          ),
           table(
             [
               { label: 'Outlet', value: (r) => h('span', { class: 'cell-strong' }, r.outlet_name) },
@@ -102,8 +108,8 @@ export async function renderOutlets(root, { profile }) {
               { label: 'Active users', value: (r) => String(r.active_users ?? 0) },
               { label: 'SIMs today', value: (r) => String(r.sims_today ?? 0) },
               { label: 'SIMs this month', value: (r) => String(r.sims_month ?? 0) },
-              { label: 'Today', value: (r) => money(r.vouchers_today) },
-              { label: 'This month', value: (r) => money(r.vouchers_month) },
+              { label: 'E-vouchers today', value: (r) => money(r.vouchers_today) },
+              { label: 'E-vouchers this month', value: (r) => money(r.vouchers_month) },
             ],
             rows,
             'No outlets in your scope. A supervisor needs a region assigned; ask an administrator.',
