@@ -1,5 +1,6 @@
-import { banner, card, h, mount, roleName, skeletonPanel, table } from '../ui.js';
+import { banner, card, h, mount, roleName, skeletonPanel } from '../ui.js';
 import { fetchUsers, fetchVoucherDailyLocal } from '../data.js';
+import { buildTeam, eachDay } from '../voucher-report.js';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -9,7 +10,7 @@ const money = (v) =>
     maximumFractionDigits: 2,
   })}`;
 
-/** '2026-11-24' -> '24 Nov' (no Date parsing, so no timezone drift). */
+/** '2026-11-24' -> '24 Nov'. No Date parsing, so no timezone drift. */
 function dayLabel(value) {
   const parts = String(value ?? '').slice(0, 10).split('-');
   if (parts.length !== 3) return String(value ?? '');
@@ -19,7 +20,6 @@ function dayLabel(value) {
 const iso = (d) =>
   d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 
-/** How stale the last upload is. A silent phone must not look like no sales. */
 function freshness(last) {
   if (!last) return { text: 'never', tone: 'bad' };
   const days = Math.floor((Date.now() - new Date(last).getTime()) / 86400000);
@@ -30,298 +30,374 @@ function freshness(last) {
 }
 
 /**
- * E-vouchers, one page.
+ * E-vouchers: three reports over one dataset.
  *
- * This used to be two screens: a rep list (today / this month) and a separate
- * "Daily E-Voucher Reports" page with an Individual/Whole Team toggle. Both were
- * the same data sliced differently, so they are one page now: pick a date range,
- * see every rep, expand a rep to see his days.
+ *   Team       each rep, with today / range / month figures
+ *   Days       one row per day, expandable to who produced it
+ *   Individual one rep, day by day
+ *
+ * They share the date range, so switching tabs never changes the window.
  */
 export async function renderVouchers(root, { profile }) {
   mount(root, h('div', {}, skeletonPanel(6)));
 
-  const today = new Date();
-  const monthStart = iso(new Date(today.getFullYear(), today.getMonth(), 1));
-  const todayIso = iso(today);
+  const now = new Date();
+  const monthStart = iso(new Date(now.getFullYear(), now.getMonth(), 1));
+  const todayIso = iso(now);
 
-  let from = monthStart;
-  let to = todayIso;
+  const state = {
+    tab: 'team',
+    from: monthStart,
+    to: todayIso,
+    repId: '',
+    openDay: null,
+  };
+
   let rows = [];
   let users = [];
-  let openRep = null;
+  let loadError = null;
 
-  const bodySlot = h('div', {});
   const cardsSlot = h('div', { class: 'cards' });
+  const bodySlot = h('div', {});
   const statusSlot = h('div', {});
 
   async function load() {
     statusSlot.replaceChildren();
+    loadError = null;
     try {
       [rows, users] = await Promise.all([
-        fetchVoucherDailyLocal(from, to),
+        fetchVoucherDailyLocal(state.from, state.to),
         fetchUsers().catch(() => []),
       ]);
     } catch (error) {
-      statusSlot.replaceChildren(banner('error', error.message));
       rows = [];
+      users = [];
+      loadError = error;
+      statusSlot.replaceChildren(banner('error', error.message));
     }
   }
 
-  // ---- aggregation ---------------------------------------------------------
-  const phoneOf = () => new Map(users.map((u) => [u.id, u.phone]));
+  const phones = () => new Map(users.map((u) => [u.id, u.phone]));
 
-  function summarise() {
-    const reps = new Map();
+  // Created once: rebuilding it on every draw would steal focus mid-typing.
+  const term = h('input', {
+    type: 'search',
+    placeholder: 'Search rep, outlet or number…',
+    oninput: () => draw(),
+  });
 
+  // ---- shared aggregation --------------------------------------------------
+  function byRep() {
+    const map = new Map();
     for (const row of rows) {
-      const key = row.sales_rep_id;
       const entry =
-        reps.get(key) ??
+        map.get(row.sales_rep_id) ??
         {
-          id: key,
+          id: row.sales_rep_id,
           name: row.sales_rep_name,
           outlet: row.outlet_name,
           region: row.region_name,
           today: 0,
           range: 0,
           vouchers: 0,
-          days: [],
+          days: 0,
+          lastDay: null,
         };
+
       const amount = Number(row.amount ?? 0);
+      const day = String(row.day).slice(0, 10);
       entry.range += amount;
       entry.vouchers += Number(row.vouchers ?? 0);
-      if (String(row.day).slice(0, 10) === todayIso) entry.today += amount;
-      entry.days.push({
-        day: String(row.day).slice(0, 10),
-        amount,
-        vouchers: Number(row.vouchers ?? 0),
-      });
-      reps.set(key, entry);
+      entry.days += 1;
+      if (day === todayIso) entry.today += amount;
+      if (!entry.lastDay || day > entry.lastDay) entry.lastDay = day;
+      map.set(row.sales_rep_id, entry);
     }
-
-    for (const rep of reps.values()) {
-      rep.days.sort((a, b) => (a.day < b.day ? 1 : -1));
-    }
-
-    const list = [...reps.values()].sort((a, b) => b.range - a.range);
-    const total = list.reduce((s, r) => s + r.range, 0);
-    const vouchers = list.reduce((s, r) => s + r.vouchers, 0);
-    const active = list.filter((r) => r.vouchers > 0).length;
-    const days = list.length
-      ? Math.max(
-          1,
-          Math.round(
-            (new Date(to) - new Date(from)) / 86400000 + 1,
-          ),
-        )
-      : 0;
-
-    return { list, total, vouchers, active, days };
+    return [...map.values()].sort((a, b) => b.range - a.range);
   }
 
-  function drawCards(summary) {
+  function totals(list) {
+    return {
+      amount: list.reduce((s, r) => s + r.range, 0),
+      today: list.reduce((s, r) => s + r.today, 0),
+      vouchers: list.reduce((s, r) => s + r.vouchers, 0),
+      active: list.filter((r) => r.vouchers > 0).length,
+    };
+  }
+
+  function drawCards(list) {
+    const t = totals(list);
+    const dayCount = eachDay(state.from, state.to).length;
     cardsSlot.replaceChildren(
-      card('Airtime in range', money(summary.total), { accent: 'accent-red' }),
-      card('Vouchers', String(summary.vouchers)),
-      card('Active reps', String(summary.active), { accent: 'accent-green' }),
-      card('Average per day', money(summary.days ? summary.total / summary.days : 0), {
-        foot: `${summary.days} day(s)`,
-      }),
+      card('Airtime in range', money(t.amount), { accent: 'accent-red' }),
+      card('Today', money(t.today)),
+      card('Vouchers', String(t.vouchers), { accent: 'accent-green' }),
+      card('Active reps', String(t.active), { foot: `${dayCount} day(s) in range` }),
     );
   }
 
-  // ---- rendering -----------------------------------------------------------
-  const term = h('input', { type: 'search', placeholder: 'Search rep, outlet or number…' });
+  // ---- views ---------------------------------------------------------------
+  function tableShell(head, body, foot) {
+    return h(
+      'table',
+      { class: 'report-table' },
+      h('thead', {}, h('tr', {}, ...head.map((label, i) => h('th', { class: i ? 'num' : '' }, label)))),
+      h('tbody', {}, ...body),
+      foot ? h('tfoot', {}, foot) : null,
+    );
+  }
 
-  function draw() {
-    const summary = summarise();
-    drawCards(summary);
-
+  function teamView() {
+    const list = byRep();
+    const phonesMap = phones();
     const q = term.value.trim().toLowerCase();
-    const phones = phoneOf();
-    const visible = summary.list.filter(
+
+    const visible = list.filter(
       (rep) =>
         !q ||
-        [rep.name, rep.outlet, rep.region, phones.get(rep.id)]
+        [rep.name, rep.outlet, rep.region, phonesMap.get(rep.id)]
           .filter(Boolean)
           .some((v) => String(v).toLowerCase().includes(q)),
     );
+    drawCards(visible);
 
-    const listSlot = h('div', { class: 'rep-list' });
-
-    const head = h(
-      'div',
-      { class: 'rep-row head' },
-      h('span', { class: 'rep-caret' }),
-      h('span', { class: 'rep-name' }, 'Sales rep'),
-      h('span', { class: 'rep-mid' }, 'Number'),
-      h('span', { class: 'rep-mid' }, 'Outlet'),
-      h('span', { class: 'rep-mid' }, 'Region'),
-      h('span', { class: 'rep-num' }, 'Today'),
-      h('span', { class: 'rep-num' }, 'In range'),
-      h('span', { class: 'rep-count' }, 'Vouchers'),
-      h('span', { class: 'badge' }, 'Last day'),
-    );
-
-    const nodes = [];
-    for (const rep of visible) {
-      const open = openRep === rep.id;
-      const last = rep.days[0]?.day;
-      const fresh = freshness(last);
-
+    const body = visible.map((rep) => {
+      const fresh = freshness(rep.lastDay);
       const row = h(
-        'div',
-        { class: `rep-row${open ? ' open' : ''}` },
-        h('span', { class: 'rep-caret' }, open ? '▾' : '▸'),
+        'tr',
+        {
+          class: 'clickable',
+          onclick: () => {
+            state.tab = 'individual';
+            state.repId = rep.id;
+            draw();
+          },
+        },
         h(
-          'span',
-          { class: 'rep-name' },
-          h('span', { class: 'rep-title' }, rep.name ?? '—'),
-          h('span', { class: 'rep-sub' }, rep.region ?? ''),
+          'td',
+          {},
+          h('div', { class: 'cell-strong' }, rep.name ?? '—'),
+          h('div', { class: 'cell-sub' }, rep.outlet ?? '—'),
         ),
-        h('span', { class: 'rep-mid' }, phones.get(rep.id) ?? '—'),
-        h('span', { class: 'rep-mid' }, rep.outlet ?? '—'),
-        h('span', { class: 'rep-mid' }, rep.region ?? '—'),
-        h('span', { class: 'rep-num' }, money(rep.today)),
-        h('span', { class: 'rep-num strong' }, money(rep.range)),
-        h('span', { class: 'rep-count' }, String(rep.vouchers)),
-        h('span', { class: `badge ${fresh.tone}` }, dayLabel(last) || 'never'),
+        h('td', {}, phonesMap.get(rep.id) ?? '—'),
+        h('td', { class: 'num' }, money(rep.today)),
+        h('td', { class: 'num' }, money(rep.range)),
+        h('td', { class: 'num' }, String(rep.vouchers)),
+        h('td', {}, h('span', { class: `badge ${fresh.tone}` }, dayLabel(rep.lastDay) || 'never')),
       );
-      row.addEventListener('click', () => {
-        openRep = open ? null : rep.id;
-        draw();
-      });
-      nodes.push(row);
+      return row;
+    });
 
-      if (!open) continue;
+    const t = totals(visible);
+    return h(
+      'div',
+      {},
+      h(
+        'div',
+        { class: 'toolbar' },
+        h('span', { class: 'hint' }, 'Click a rep for his individual report'),
+      ),
+      tableShell(
+        ['Sales rep / Outlet', 'Number', 'Today', 'In range', 'Vouchers', 'Last day'],
+        body.length ? body : [h('tr', {}, h('td', { colspan: '6', class: 'muted' }, 'No vouchers in this range.'))],
+        h(
+          'tr',
+          {},
+          h('td', {}, `TOTAL (${visible.length} reps)`),
+          h('td', {}, ''),
+          h('td', { class: 'num' }, money(t.today)),
+          h('td', { class: 'num strong' }, money(t.amount)),
+          h('td', { class: 'num' }, String(t.vouchers)),
+          h('td', {}, ''),
+        ),
+      ),
+    );
+  }
 
-      if (!rep.days.length) {
-        nodes.push(h('div', { class: 'day-row muted' }, 'No vouchers in this range.'));
-        continue;
-      }
+  function daysView() {
+    const team = buildTeam(rows, state.from, state.to);
+    drawCards(byRep());
 
-      for (const day of rep.days) {
-        nodes.push(
+    const body = [];
+    for (const day of team.rows) {
+      const open = state.openDay === day.day;
+      const row = h(
+        'tr',
+        {
+          class: `clickable${day.vouchers ? '' : ' empty-row'}`,
+          onclick: () => {
+            if (!day.byRep.length) return;
+            state.openDay = open ? null : day.day;
+            draw();
+          },
+        },
+        h('td', {}, (day.byRep.length ? (open ? '▾ ' : '▸ ') : '') + dayLabel(day.day)),
+        h('td', { class: 'num' }, String(day.byRep.length)),
+        h('td', { class: 'num' }, String(day.vouchers)),
+        h('td', { class: 'num' }, money(day.amount)),
+      );
+      body.push(row);
+
+      if (open) {
+        body.push(
           h(
-            'div',
-            { class: 'day-row' },
-            h('span', { class: 'day-caret' }),
-            h('span', { class: 'day-date' }, dayLabel(day.day)),
-            h('span', {}),
-            h('span', {}),
-            h('span', {}),
-            h('span', { class: 'day-amt' }, money(day.amount)),
-            h('span', {}),
-            h('span', { class: 'day-count' }, String(day.vouchers)),
-            h('span', {}),
+            'tr',
+            { class: 'detail-row' },
+            h(
+              'td',
+              { colspan: '4' },
+              tableShell(
+                ['Sales rep', 'Vouchers', 'Amount'],
+                day.byRep.map((rep) =>
+                  h(
+                    'tr',
+                    {},
+                    h('td', {}, rep.sales_rep_name),
+                    h('td', { class: 'num' }, String(rep.vouchers)),
+                    h('td', { class: 'num' }, money(rep.amount)),
+                  ),
+                ),
+              ),
+            ),
           ),
         );
       }
     }
 
-    listSlot.replaceChildren(
-      head,
-      ...(nodes.length ? nodes : [h('div', { class: 'day-row muted' }, 'No vouchers in this range.')]),
-    );
-
-    const foot = h(
+    return h(
       'div',
-      { class: 'rep-foot' },
-      h('span', { class: 'foot-label' }, `TOTAL (${visible.length} reps)`),
-      h('span', { class: 'foot-num' }, money(visible.reduce((s, r) => s + r.today, 0))),
-      h('span', { class: 'foot-num strong' }, money(visible.reduce((s, r) => s + r.range, 0))),
-      h(
-        'span',
-        { class: 'foot-flag' },
-        `${visible.reduce((s, r) => s + r.vouchers, 0)} voucher(s)`,
+      {},
+      tableShell(
+        ['Day', 'Reps', 'Vouchers', 'Amount'],
+        body.length ? body : [h('tr', {}, h('td', { colspan: '4', class: 'muted' }, 'No days in this range.'))],
+        h(
+          'tr',
+          {},
+          h('td', {}, 'TOTAL'),
+          h('td', { class: 'num' }, ''),
+          h('td', { class: 'num' }, String(team.totals.vouchers)),
+          h('td', { class: 'num strong' }, money(team.totals.amount)),
+        ),
       ),
     );
-
-    bodySlot.replaceChildren(listSlot, foot);
   }
 
-  // ---- exports -------------------------------------------------------------
-  async function exportExcel() {
-    const ExcelJS = (await import('exceljs')).default;
-    const wb = new ExcelJS.Workbook();
-    const ws = wb.addWorksheet('E-Vouchers');
-    ws.addRow(['Sales rep', 'Number', 'Outlet', 'Region', 'Date', 'Vouchers', 'Amount']);
-    ws.getRow(1).font = { bold: true };
+  function individualView() {
+    const list = byRep();
+    if (!state.repId && list.length) state.repId = list[0].id;
 
-    const phones = phoneOf();
-    const summary = summarise();
-    for (const rep of summary.list) {
-      for (const day of rep.days) {
-        ws.addRow([
-          rep.name,
-          phones.get(rep.id) ?? '',
-          rep.outlet,
-          rep.region,
-          day.day,
-          day.vouchers,
-          day.amount,
-        ]);
-      }
-    }
-    ws.columns.forEach((col) => (col.width = 18));
+    const rep = list.find((r) => r.id === state.repId);
+    drawCards(rep ? [rep] : []);
 
-    const buffer = await wb.xlsx.writeBuffer();
-    const url = URL.createObjectURL(
-      new Blob([buffer], {
-        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      }),
+    const options = list.map((r) =>
+      h('option', { value: r.id, selected: r.id === state.repId }, r.name ?? r.id),
     );
-    const a = h('a', { href: url, download: `e-vouchers-${from}_${to}.xlsx` });
-    document.body.append(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
+
+    if (!rep) {
+      return h(
+        'div',
+        {},
+        h('p', { class: 'sub' }, 'No vouchers in this range.'),
+        h('label', { class: 'filter' }, h('span', {}, 'Sales rep'), h('select', {}, ...options)),
+      );
+    }
+
+    const dayRows = rep.days === 0
+      ? []
+      : rows
+          .filter(
+            (row) =>
+              row.sales_rep_id === rep.id &&
+              String(row.day).slice(0, 10) >= state.from &&
+              String(row.day).slice(0, 10) <= state.to,
+          )
+          .sort((a, b) => (String(a.day) < String(b.day) ? 1 : -1))
+          .map((row) =>
+            h(
+              'tr',
+              {},
+              h('td', {}, dayLabel(row.day)),
+              h('td', { class: 'num' }, String(row.vouchers ?? 0)),
+              h('td', { class: 'num' }, money(row.amount)),
+            ),
+          );
+
+    return h(
+      'div',
+      {},
+      h(
+        'div',
+        { class: 'filters' },
+        h(
+          'label',
+          { class: 'filter' },
+          h('span', {}, 'Sales rep'),
+          h(
+            'select',
+            {
+              onchange: (event) => {
+                state.repId = event.target.value;
+                draw();
+              },
+            },
+            ...options,
+          ),
+        ),
+        h('div', { class: 'filter no-label' }, h('span', { 'aria-hidden': 'true' }, 'x'), h('span', { class: 'hint' }, rep.outlet ?? '')),
+      ),
+      tableShell(
+        ['Day', 'Vouchers', 'Amount'],
+        dayRows.length
+          ? dayRows
+          : [h('tr', {}, h('td', { colspan: '3', class: 'muted' }, 'No vouchers for this rep in range.'))],
+        h(
+          'tr',
+          {},
+          h('td', {}, 'TOTAL'),
+          h('td', { class: 'num' }, String(rep.vouchers)),
+          h('td', { class: 'num strong' }, money(rep.range)),
+        ),
+      ),
+    );
   }
 
-  // ---- controls ------------------------------------------------------------
-  const fromInput = h('input', { type: 'date', value: from, 'aria-label': 'From' });
-  const toInput = h('input', { type: 'date', value: to, 'aria-label': 'To' });
-
-  const apply = h(
-    'button',
-    {
-      class: 'btn sm',
-      type: 'button',
-      onclick: async () => {
-        if (fromInput.value > toInput.value) {
-          statusSlot.replaceChildren(banner('error', 'The start date is after the end date.'));
-          return;
-        }
-        from = fromInput.value;
-        to = toInput.value;
-        openRep = null;
-        await load();
-        draw();
+  // ---- chrome --------------------------------------------------------------
+  function tabButton(value, label) {
+    return h(
+      'button',
+      {
+        type: 'button',
+        class: `seg${state.tab === value ? ' active' : ''}`,
+        onclick: async () => {
+          state.tab = value;
+          state.openDay = null;
+          draw();
+        },
       },
-    },
-    'Apply',
-  );
+      label,
+    );
+  }
 
-  const reset = h(
-    'button',
-    {
-      class: 'btn secondary sm',
-      type: 'button',
-      onclick: async () => {
-        fromInput.value = monthStart;
-        toInput.value = todayIso;
-        from = monthStart;
-        to = todayIso;
-        term.value = '';
-        openRep = null;
-        await load();
-        draw();
-      },
-    },
-    'This month',
-  );
+  const fromInput = h('input', { type: 'date', value: state.from, 'aria-label': 'From' });
+  const toInput = h('input', { type: 'date', value: state.to, 'aria-label': 'To' });
 
-  term.addEventListener('input', draw);
+  function draw() {
+    bodySlot.replaceChildren(
+      state.tab === 'team'
+        ? teamView()
+        : state.tab === 'days'
+          ? daysView()
+          : individualView(),
+    );
+
+    tabBar.replaceChildren(
+      tabButton('team', 'Team'),
+      tabButton('days', 'By day'),
+      tabButton('individual', 'Individual'),
+    );
+  }
+
+  const tabBar = h('div', { class: 'segment', style: { margin: '4px 0 16px' } });
 
   await load();
 
@@ -337,20 +413,11 @@ export async function renderVouchers(root, { profile }) {
           'div',
           {},
           h('h1', {}, 'E-vouchers'),
-          h(
-            'p',
-            { class: 'sub' },
-            `Airtime from 913 SMS · click a rep to see his days · you are ${roleName(profile.role)}`,
-          ),
+          h('p', { class: 'sub' }, `Airtime from 913 SMS · you are ${roleName(profile.role)}`),
         ),
         h(
           'div',
           { class: 'page-actions', style: { display: 'flex', gap: '8px' } },
-          h(
-            'button',
-            { class: 'btn', type: 'button', onclick: exportExcel },
-            'Export Excel',
-          ),
           h('button', { class: 'btn secondary', type: 'button', onclick: () => window.print() }, 'Print'),
         ),
       ),
@@ -359,24 +426,69 @@ export async function renderVouchers(root, { profile }) {
         { class: 'panel' },
         h(
           'div',
-          { class: 'toolbar' },
-          h('div', { class: 'search' }, term),
-          h('span', { class: 'hint' }, `${dayLabel(from)} – ${dayLabel(to)}`),
-        ),
-        h(
-          'div',
           { class: 'filters' },
           h('label', { class: 'filter' }, h('span', {}, 'From'), fromInput),
           h('label', { class: 'filter' }, h('span', {}, 'To'), toInput),
-          h('div', { class: 'filter no-label' }, h('span', { 'aria-hidden': 'true' }, 'x'), apply),
-          h('div', { class: 'filter no-label' }, h('span', { 'aria-hidden': 'true' }, 'x'), reset),
+          h(
+            'div',
+            { class: 'filter no-label' },
+            h('span', { 'aria-hidden': 'true' }, 'x'),
+            h(
+              'button',
+              {
+                class: 'btn sm',
+                type: 'button',
+                onclick: async () => {
+                  if (fromInput.value > toInput.value) {
+                    statusSlot.replaceChildren(banner('error', 'The start date is after the end date.'));
+                    return;
+                  }
+                  state.from = fromInput.value;
+                  state.to = toInput.value;
+                  state.openDay = null;
+                  await load();
+                  draw();
+                },
+              },
+              'Apply',
+            ),
+          ),
+          h(
+            'div',
+            { class: 'filter no-label' },
+            h('span', { 'aria-hidden': 'true' }, 'x'),
+            h(
+              'button',
+              {
+                class: 'btn secondary sm',
+                type: 'button',
+                onclick: async () => {
+                  fromInput.value = monthStart;
+                  toInput.value = todayIso;
+                  state.from = monthStart;
+                  state.to = todayIso;
+                  state.openDay = null;
+                  await load();
+                  draw();
+                },
+              },
+              'This month',
+            ),
+          ),
         ),
         statusSlot,
       ),
       cardsSlot,
-      h('div', { class: 'panel' }, bodySlot),
+      h(
+        'div',
+        { class: 'panel' },
+        h('div', { class: 'toolbar' }, h('div', { class: 'search' }, term)),
+        tabBar,
+        bodySlot,
+      ),
     ),
   );
 
+  if (loadError) statusSlot.replaceChildren(banner('error', loadError.message));
   draw();
 }
