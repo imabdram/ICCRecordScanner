@@ -195,7 +195,7 @@ A supervisor manages a whole **region**, not an outlet.
   by the supervisor for their region
 
 `scripts/schema_v15_region_management.sql` must be applied.
-## Daily E-Voucher Reports (website)
+## E-vouchers (website)
 
 A separate page from the E-vouchers dashboard, built for checking a period:
 
