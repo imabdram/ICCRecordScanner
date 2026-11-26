@@ -1,6 +1,10 @@
 import { banner, card, h, mount, roleName, skeletonPanel, table } from '../ui.js';
 import { fetchOutletOverview } from '../data.js';
 
+// A missing column is not a zero: the SIM views may not be applied yet, and
+// showing 0.00 hides that. An em dash makes the gap obvious.
+const num = (v) => (v === undefined || v === null ? '—' : String(v));
+
 const money = (v) =>
   `$${Number(v ?? 0).toLocaleString(undefined, {
     minimumFractionDigits: 2,
@@ -26,8 +30,10 @@ export async function renderOutlets(root, { profile }) {
     const leaders = rows.reduce((s, r) => s + Number(r.team_leaders ?? 0), 0);
     const today = rows.reduce((s, r) => s + Number(r.vouchers_today ?? 0), 0);
     const month = rows.reduce((s, r) => s + Number(r.vouchers_month ?? 0), 0);
-    const simsToday = rows.reduce((s, r) => s + Number(r.sims_today ?? 0), 0);
-    const simsMonth = rows.reduce((s, r) => s + Number(r.sims_month ?? 0), 0);
+    // undefined means the view has no SIM columns yet -- keep that distinct from 0.
+    const hasSims = rows.length > 0 && rows[0].sims_today !== undefined;
+    const simsToday = hasSims ? rows.reduce((s, r) => s + Number(r.sims_today ?? 0), 0) : null;
+    const simsMonth = hasSims ? rows.reduce((s, r) => s + Number(r.sims_month ?? 0), 0) : null;
 
     mount(
       root,
@@ -50,7 +56,7 @@ export async function renderOutlets(root, { profile }) {
           card('Outlets', String(rows.length), { foot: 'in your region' }),
           card('Team Leaders', String(leaders)),
           card('Sales Reps', String(reps)),
-          card('SIMs Today', String(simsToday), { accent: 'accent-red' }),
+          card('SIMs Today', simsToday === null ? '—' : String(simsToday), { accent: 'accent-red' }),
           card('E-Vouchers Today', money(today), { accent: 'accent-green' }),
         ),
         h(
@@ -68,9 +74,9 @@ export async function renderOutlets(root, { profile }) {
               { label: 'Region', value: (r) => r.region_name ?? '—' },
               { label: 'Team leaders', value: (r) => String(r.team_leaders ?? 0) },
               { label: 'Sales reps', value: (r) => String(r.reps ?? 0) },
-              { label: 'SIMs today', value: (r) => String(r.sims_today ?? 0) },
-              { label: 'SIMs this month', value: (r) => String(r.sims_month ?? 0) },
-              { label: 'SIMs total', value: (r) => String(r.sims_total ?? 0) },
+              { label: 'SIMs today', value: (r) => num(r.sims_today) },
+              { label: 'SIMs this month', value: (r) => num(r.sims_month) },
+              { label: 'SIMs total', value: (r) => num(r.sims_total) },
             ],
             rows,
             'No outlets in your scope. A supervisor needs a region assigned; ask an administrator.',
