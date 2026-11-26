@@ -25,27 +25,6 @@ export function renderLogin(root, onSignedIn) {
     placeholder: 'Enter your password',
   });
 
-  // Show/hide the password. Purely visual: the value and the submitted form are
-  // unchanged, and the field goes back to `password` when hidden.
-  const reveal = h(
-    'button',
-    {
-      class: 'reveal',
-      type: 'button',
-      'aria-label': 'Show password',
-      'aria-pressed': 'false',
-      onclick: () => {
-        const showing = password.type === 'text';
-        password.type = showing ? 'password' : 'text';
-        reveal.setAttribute('aria-pressed', String(!showing));
-        reveal.setAttribute('aria-label', showing ? 'Show password' : 'Hide password');
-        reveal.classList.toggle('on', !showing);
-        password.focus();
-      },
-    },
-    h('span', { class: 'eye' }, h('span', { class: 'pupil' })),
-  );
-
   const message = h('div', {});
   const submit = h('button', { class: 'btn block signin', type: 'submit' }, 'Sign in');
 
@@ -78,7 +57,7 @@ export function renderLogin(root, onSignedIn) {
     h('p', { class: 'login-sub' }, 'Sign in to the Bari Region operations console.'),
     message,
     h('label', { class: 'field login-field' }, h('span', {}, 'Username'), username),
-    h('label', { class: 'field login-field' }, h('span', {}, 'Password'), h('div', { class: 'with-reveal' }, password, reveal)),
+    h('label', { class: 'field login-field' }, h('span', {}, 'Password'), password),
     h('div', { class: 'login-submit' }, submit),
     h(
       'div',

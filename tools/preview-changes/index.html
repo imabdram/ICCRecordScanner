@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>SCMS preview - logo + no eye</title>
+<style>
+  :root {
+    --red: #e30613;
+    --ink: #101c2b;
+    --muted: #6e7786;
+    --line: #e2e8f0;
+    --bg: #f6f7fa;
+    --ink-2: #334155;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: "Segoe UI", system-ui, -apple-system, Arial, sans-serif;
+    color: var(--ink);
+    background: #eef1f6;
+    padding: 28px 24px 48px;
+  }
+  .cap {
+    font-size: 12px;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    color: #64748b;
+    font-weight: 700;
+    margin: 0 0 10px 4px;
+  }
+  .stage {
+    display: flex;
+    gap: 28px;
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  /* ---------------------------------------------------------------- shell */
+  .shell {
+    display: grid;
+    grid-template-columns: 258px 1fr;
+    width: 880px;
+    height: 520px;
+    background: #fff;
+    border: 1px solid #e5e9f0;
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow: 0 18px 40px -26px rgba(16, 24, 40, .35);
+  }
+  .sidebar {
+    border-right: 1px solid var(--line);
+    padding: 18px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    background: #fcfdfe;
+  }
+  /* the only change: logo instead of the red square */
+  .brand { display: flex; align-items: center; gap: 10px; }
+  .brand img { width: 34px; height: auto; display: block; }
+  .brand span { font-size: 14px; font-weight: 800; letter-spacing: -.01em; }
+
+  .who { display: flex; gap: 10px; align-items: center; }
+  .avatar {
+    width: 34px; height: 34px; border-radius: 50%;
+    background: var(--red); color: #fff;
+    display: grid; place-items: center;
+    font-size: 12px; font-weight: 700;
+  }
+  .who .name { font-size: 13px; font-weight: 700; }
+  .who .sub { font-size: 10.5px; color: var(--muted); }
+
+  .nav { display: flex; flex-direction: column; gap: 2px; }
+  .nav a {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 10px; border-radius: 9px;
+    font-size: 13px; color: var(--ink-2); text-decoration: none;
+  }
+  .nav a.active { background: #fdeff1; color: var(--red); font-weight: 700; }
+  .nav i { width: 15px; height: 15px; border: 1.8px solid currentColor; border-radius: 4px; display: block; }
+
+  .main { padding: 20px 22px; background: #fbfcfd; }
+  .main h1 { font-size: 20px; margin: 0 0 4px; }
+  .main p { margin: 0 0 18px; color: var(--muted); font-size: 12.5px; }
+  .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .card {
+    background: #fff; border: 1px solid var(--line); border-radius: 12px;
+    padding: 14px;
+  }
+  .card .k { font-size: 10px; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); font-weight: 700; }
+  .card .v { font-size: 22px; font-weight: 800; margin-top: 4px; }
+  .card .v.red { color: var(--red); }
+
+  /* ---------------------------------------------------------------- login */
+  .login-page {
+    position: relative;
+    width: 440px;
+    min-height: 470px;
+    display: grid;
+    place-items: center;
+    padding: 22px;
+    border-radius: 14px;
+    overflow: hidden;
+    background:
+      radial-gradient(520px 420px at -6% 108%, rgba(227, 6, 19, .10), transparent 62%),
+      radial-gradient(480px 380px at 104% -8%, rgba(16, 42, 84, .08), transparent 60%),
+      #f6f7fa;
+    border: 1px solid #e5e9f0;
+  }
+  .login-page::before,
+  .login-page::after {
+    content: ""; position: absolute; border-radius: 50%; pointer-events: none;
+  }
+  .login-page::before {
+    width: 420px; height: 420px; left: -190px; bottom: -250px;
+    border: 3px solid rgba(227, 6, 19, .16);
+  }
+  .login-page::after {
+    width: 380px; height: 380px; right: -170px; top: -220px;
+    border: 3px solid rgba(16, 42, 84, .13);
+  }
+  .login-card {
+    position: relative; z-index: 1;
+    width: 100%; max-width: 360px;
+    padding: 26px 26px 22px;
+    background: #fff;
+    border: 1px solid #edf0f5;
+    border-radius: 18px;
+    box-shadow: 0 22px 50px -28px rgba(16, 24, 40, .35);
+  }
+  .login-brand { display: flex; flex-direction: column; gap: 5px; margin-bottom: 18px; }
+  .login-brand img { width: 112px; height: auto; display: block; }
+  .tagline { font-size: 11.5px; color: var(--muted); }
+  .login-title { font-size: 21px; margin: 0 0 5px; }
+  .login-sub { margin: 0 0 18px; color: var(--muted); font-size: 12.5px; }
+  .field { display: block; margin-bottom: 14px; }
+  .field > span {
+    display: block; font-size: 10px; font-weight: 700; letter-spacing: .06em;
+    text-transform: uppercase; color: var(--muted); margin-bottom: 6px;
+  }
+  .field input {
+    display: block; width: 100%; height: 44px; padding: 0 13px;
+    border: 1px solid var(--line); border-radius: 10px;
+    background: #fafbfd; font: inherit; font-size: 14px; color: var(--ink);
+  }
+  .field input::placeholder { color: #96a0b0; }
+  .field input:focus {
+    outline: none; border-color: var(--red); background: #fff;
+    box-shadow: 0 0 0 3px rgba(227, 6, 19, .12);
+  }
+  .signin {
+    width: 100%; height: 46px; margin-top: 18px;
+    border: 0; border-radius: 11px; background: var(--red);
+    color: #fff; font: inherit; font-size: 14.5px; font-weight: 600; cursor: pointer;
+  }
+  .signin:hover { background: #c90511; }
+  .notice {
+    margin-top: 18px; padding: 11px 12px; border-radius: 10px;
+    background: #faf6f6; border: 1px solid #f6e4e6;
+  }
+  .notice b {
+    display: block; font-size: 10px; letter-spacing: .06em; text-transform: uppercase;
+    color: #96424a; margin-bottom: 3px;
+  }
+  .notice p { margin: 0; font-size: 11px; line-height: 1.5; color: #6c5458; }
+  .login-footer { position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); font-size: 10.5px; color: #a6adba; }
+
+  .note { font-size: 12px; color: #64748b; margin: 10px 0 0 4px; max-width: 880px; line-height: 1.5; }
+</style>
+</head>
+<body>
+
+<p class="cap">1 · Dashboard sidebar — Amtel logo replaces the red square</p>
+<div class="stage">
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <img src="/amtel-logo.png" alt="Amtel" />
+        <span>SIM Management System</span>
+      </div>
+
+      <div class="who">
+        <div class="avatar">YG</div>
+        <div>
+          <div class="name">Yacquub Gelle</div>
+          <div class="sub">Team Leader · Alla-aamin Qardho</div>
+        </div>
+      </div>
+
+      <nav class="nav">
+        <a class="active" href="#"><i></i> Dashboard</a>
+        <a href="#"><i></i> Scan Records</a>
+        <a href="#"><i></i> Regional Outlets</a>
+        <a href="#"><i></i> E-vouchers</a>
+        <a href="#"><i></i> Daily E-Voucher Reports</a>
+        <a href="#"><i></i> Users &amp; Team</a>
+      </nav>
+    </aside>
+
+    <main class="main">
+      <h1>Dashboard</h1>
+      <p>Bari Region operations · this week</p>
+      <div class="cards">
+        <div class="card"><div class="k">Scans today</div><div class="v red">18</div></div>
+        <div class="card"><div class="k">This month</div><div class="v">412</div></div>
+        <div class="card"><div class="k">E-vouchers</div><div class="v">$245.00</div></div>
+      </div>
+    </main>
+  </div>
+
+  <div>
+    <p class="cap" style="margin-top:0">2 · Login — no eye icon</p>
+    <div class="login-page">
+      <form class="login-card" onsubmit="event.preventDefault()">
+        <div class="login-brand">
+          <img src="/amtel-logo.png" alt="Amtel" />
+          <span class="tagline">Always closer you</span>
+        </div>
+        <h1 class="login-title">SIM Management System</h1>
+        <p class="login-sub">Sign in to the Bari Region operations console.</p>
+
+        <label class="field">
+          <span>Username</span>
+          <input type="text" placeholder="your.username" autocomplete="username" />
+        </label>
+        <label class="field">
+          <span>Password</span>
+          <input type="password" placeholder="Enter your password" autocomplete="current-password" />
+        </label>
+
+        <button class="signin" type="submit">Sign in</button>
+
+        <div class="notice">
+          <b>Security notice</b>
+          <p>Accounts are created by an administrator. If you have forgotten your password,
+             ask them to set a new one — there is no reset email.</p>
+        </div>
+      </form>
+      <div class="login-footer">Amtel · Bari Region</div>
+    </div>
+  </div>
+</div>
+
+<p class="note">
+  This is a preview page only — nothing in the SCMS project has been changed.
+  The password field is a real input (try typing); the eye button is gone, so the
+  password can never be revealed.
+</p>
+
+</body>
+</html>

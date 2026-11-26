@@ -174,7 +174,13 @@ async function boot() {
   });
 
   sidebar.append(
-    h('div', { class: 'brand' }, h('span', { class: 'dot' }), 'SIM Management'),
+    h(
+      'div',
+      { class: 'brand' },
+      // Official logo in place of the old red square.
+      h('img', { src: '/amtel-logo.png', alt: 'Amtel' }),
+      h('span', { class: 'brand-name' }, 'SIM Management System'),
+    ),
     h(
       'div',
       { class: 'who' },
