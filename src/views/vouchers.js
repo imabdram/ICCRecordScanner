@@ -63,6 +63,7 @@ export async function renderVouchers(root, { profile }) {
     to: initial.to,
     repId: '',
     openDay: null,
+    day: '',
   };
 
   let rows = [];
@@ -128,6 +129,32 @@ export async function renderVouchers(root, { profile }) {
     return [...map.values()].sort((a, b) => b.range - a.range);
   }
 
+  function byRepForDay(day) {
+    const map = new Map();
+    for (const row of rows) {
+      if (String(row.day).slice(0, 10) !== day) continue;
+      const entry =
+        map.get(row.sales_rep_id) ??
+        {
+          id: row.sales_rep_id,
+          name: row.sales_rep_name,
+          outlet: row.outlet_name,
+          region: row.region_name,
+          today: 0,
+          range: 0,
+          vouchers: 0,
+          days: 0,
+          lastDay: day,
+        };
+      entry.range += Number(row.amount ?? 0);
+      entry.vouchers += Number(row.vouchers ?? 0);
+      entry.days = 1;
+      if (day === todayIso) entry.today = entry.range;
+      map.set(row.sales_rep_id, entry);
+    }
+    return [...map.values()].sort((a, b) => b.range - a.range);
+  }
+
   function totals(list) {
     return {
       amount: list.reduce((s, r) => s + r.range, 0),
@@ -171,7 +198,8 @@ export async function renderVouchers(root, { profile }) {
   }
 
   function teamView() {
-    const list = byRep();
+    // When a day is chosen the rows are that day's figures; otherwise the month.
+    const list = state.day ? byRepForDay(state.day) : byRep();
     const phonesMap = phones();
 
     // Everyone in scope, not only the people who sold: a rep with 0 in the period
@@ -224,7 +252,7 @@ export async function renderVouchers(root, { profile }) {
           h('div', { class: 'cell-sub' }, rep.outlet ?? '—'),
         ),
         h('td', {}, phonesMap.get(rep.id) ?? '—'),
-        h('td', { class: 'num' }, money(rep.today)),
+        state.day ? null : h('td', { class: 'num' }, money(rep.today)),
         h('td', { class: 'num' }, money(rep.range)),
         h('td', { class: 'num' }, String(rep.vouchers)),
         h('td', {}, h('span', { class: `badge ${fresh.tone}` }, dayLabel(rep.lastDay) || 'never')),
@@ -242,19 +270,23 @@ export async function renderVouchers(root, { profile }) {
         h('span', { class: 'hint' }, 'Click a rep for his individual report'),
       ),
       tableShell(
-        ['Sales rep / Outlet', 'Number', 'Today', 'In range', 'Vouchers', 'Last day'],
-        body.length ? body : [h('tr', {}, h('td', { colspan: '6', class: 'muted' }, 'No vouchers in this range.'))],
+        state.day
+          ? ['Sales rep / Outlet', 'Number', 'Amount that day', 'Vouchers', 'Last day']
+          : ['Sales rep / Outlet', 'Number', 'Today', 'In range', 'Vouchers', 'Last day'],
+        body.length
+          ? body
+          : [h('tr', {}, h('td', { colspan: '6', class: 'muted' }, state.day ? 'No vouchers on that day.' : 'No vouchers in this range.'))],
         h(
           'tr',
           {},
           h('td', {}, `TOTAL (${visible.length} reps)`),
           h('td', {}, ''),
-          h('td', { class: 'num' }, money(t.today)),
+          state.day ? null : h('td', { class: 'num' }, money(t.today)),
           h('td', { class: 'num strong' }, money(t.amount)),
           h('td', { class: 'num' }, String(t.vouchers)),
           h('td', {}, ''),
         ),
-        [2, 3, 4],
+        state.day ? [2, 3] : [2, 3, 4],
       ),
     );
   }
@@ -265,8 +297,10 @@ export async function renderVouchers(root, { profile }) {
     drawCards(byRep());
 
     const body = [];
+    const allDays = [...team.rows].reverse();
+    const visibleDays = state.day ? allDays.filter((d) => d.day === state.day) : allDays;
     // Newest day first.
-    for (const day of [...team.rows].reverse()) {
+    for (const day of visibleDays) {
       const open = state.openDay === day.day;
       const row = h(
         'tr',
@@ -610,6 +644,29 @@ export async function renderVouchers(root, { profile }) {
 
     doc.save(`e-vouchers-${state.tab}-${state.from}_${state.to}.pdf`);
   }
+  // ---- day picker ----------------------------------------------------------
+  // Days of the selected month, newest first. Picking one narrows Team to that
+  // day and opens it in By day, so "who sold on the 18th" is two clicks.
+  const daySelect = h('select', {
+    'aria-label': 'Day',
+    style: { minWidth: '150px' },
+    onchange: (event) => {
+      state.day = event.target.value;
+      state.openDay = event.target.value || null;
+      draw();
+    },
+  });
+
+  const refreshDayOptions = () => {
+    const days = eachDay(state.from, state.to).reverse();
+    daySelect.replaceChildren(
+      h('option', { value: '' }, 'Whole month'),
+      ...days.map((day) => h('option', { value: day, selected: state.day === day }, dayLabel(day))),
+    );
+    if (!days.includes(state.day)) state.day = '';
+    daySelect.value = state.day;
+  };
+
   // ---- month stepper -------------------------------------------------------
   const monthLabel = h('span', { style: { fontWeight: '700', minWidth: '150px', display: 'inline-block', textAlign: 'center' } });
 
@@ -637,6 +694,7 @@ export async function renderVouchers(root, { profile }) {
     state.openDay = null;
     await load();
     refreshLabel();
+    refreshDayOptions();
     draw();
   }
 
@@ -666,11 +724,14 @@ export async function renderVouchers(root, { profile }) {
         state.openDay = null;
         await load();
         refreshLabel();
+        refreshDayOptions();
         draw();
       },
     },
     'This month',
   );
+
+  refreshDayOptions();
 
   const stepper = h(
     'div',
@@ -679,6 +740,7 @@ export async function renderVouchers(root, { profile }) {
     monthLabel,
     nextButton,
     thisMonthButton,
+    daySelect,
   );
 
   refreshLabel();
