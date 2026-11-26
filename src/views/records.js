@@ -1,4 +1,5 @@
 import { banner, card, fmtDate, fmtTime, h, icon, mount, roleName, skeletonPanel, table } from '../ui.js';
+import { fetchRepSimReport } from '../data.js';
 import { deleteScan, fetchScans, fetchUsers } from '../data.js';
 import { filterScans } from '../filters.js';
 import { supabase, unwrap } from '../supabase.js';
@@ -171,6 +172,117 @@ export async function renderRecords(root, { profile, go }) {
     repSelect.addEventListener('change', onFilter);
     outletSelect.addEventListener('change', onFilter);
 
+    // Two views of the same page: the scan records themselves, and the per-rep
+    // count of SIM cards opened. The rep table used to live on Regional Outlets;
+    // it belongs here, next to the records it summarises.
+    let sims = [];
+    try {
+      sims = await fetchRepSimReport();
+    } catch (_) {
+      sims = [];
+    }
+
+    const recordsPanel = h('div', {}, h(
+              'div',
+              { class: 'cards' },
+              card('Visible scans', scans.length),
+              card('Today', todayCount, { accent: 'accent-red' }),
+              card('Months covered', months.length, { foot: months.slice(0, 2).join(', ') || '—' }),
+            ),
+            h(
+              'div',
+              { class: 'panel' },
+              h(
+                'div',
+                { class: 'toolbar' },
+                h('div', { class: 'search' }, icon('search', 16, 'ico', true), term),
+                countSlot,
+              ),
+              h(
+                'div',
+                { class: 'filters' },
+                h('label', { class: 'filter' }, h('span', {}, 'From'), fromInput),
+                h('label', { class: 'filter' }, h('span', {}, 'To'), toInput),
+                h('label', { class: 'filter' }, h('span', {}, 'Sales rep'), repSelect),
+                h('label', { class: 'filter' }, h('span', {}, 'Outlet'), outletSelect),
+                // Wrapped in a .filter with a hidden label so the button's height and
+                // baseline match the selects beside it.
+                h(
+                  'div',
+                  { class: 'filter no-label' },
+                  h('span', { 'aria-hidden': 'true' }, 'Reset'),
+                  h(
+                    'button',
+                    { class: 'btn secondary sm', type: 'button', onclick: resetFilters },
+                    'Reset filters',
+                  ),
+                ),
+              ),
+              tableSlot,
+            ),);
+
+    const simsPanel = h(
+      'div',
+      { style: { display: 'none' } },
+      h(
+        'div',
+        { class: 'panel' },
+        h('h2', { style: { margin: '0 0 4px', fontSize: '16px' } }, 'SIM cards opened by sales rep'),
+        h(
+          'p',
+          { class: 'sub', style: { margin: '0 0 12px' } },
+          'Today ' + sims.reduce((s, r) => s + Number(r.sims_today ?? 0), 0) +
+            ' · this month ' + sims.reduce((s, r) => s + Number(r.sims_month ?? 0), 0) +
+            ' · every rep in your scope',
+        ),
+        table(
+          [
+            {
+              label: 'Sales rep',
+              value: (r) =>
+                h(
+                  'div',
+                  {},
+                  h('div', { class: 'cell-strong' }, r.full_name || r.username),
+                  h('div', { class: 'cell-sub' }, r.team_leader_name ?? '—'),
+                ),
+            },
+            { label: 'Outlet', value: (r) => r.outlet_name ?? '—' },
+            { label: 'Today', value: (r) => String(r.sims_today ?? 0) },
+            { label: 'This month', value: (r) => String(r.sims_month ?? 0) },
+            { label: 'Total', value: (r) => String(r.sims_total ?? 0) },
+            {
+              label: 'Last scan',
+              value: (r) =>
+                r.last_scan_at ? new Date(r.last_scan_at).toLocaleDateString() : 'never',
+            },
+          ],
+          sims,
+          'No SIM cards recorded in your scope yet.',
+        ),
+      ),
+    );
+
+    const tabBar = h('div', { class: 'segment', style: { margin: '4px 0 18px' } });
+    const tabButtons = [];
+    const selectTab = (value) => {
+      recordsPanel.style.display = value === 'records' ? '' : 'none';
+      simsPanel.style.display = value === 'sims' ? '' : 'none';
+      for (const button of tabButtons) {
+        button.classList.toggle('active', button.dataset.tab === value);
+      }
+    };
+    const tabButton = (value, label) => {
+      const button = h('button', { class: 'seg', type: 'button', onclick: () => selectTab(value) }, label);
+      button.dataset.tab = value;
+      tabButtons.push(button);
+      tabBar.append(button);
+      return button;
+    };
+    tabButton('records', 'Scan records');
+    tabButton('sims', 'SIM cards by rep');
+    selectTab('records');
+
     mount(
       root,
       h(
@@ -223,44 +335,9 @@ export async function renderRecords(root, { profile, go }) {
               : null,
           ),
         ),
-        h(
-          'div',
-          { class: 'cards' },
-          card('Visible scans', scans.length),
-          card('Today', todayCount, { accent: 'accent-red' }),
-          card('Months covered', months.length, { foot: months.slice(0, 2).join(', ') || '—' }),
-        ),
-        h(
-          'div',
-          { class: 'panel' },
-          h(
-            'div',
-            { class: 'toolbar' },
-            h('div', { class: 'search' }, icon('search', 16, 'ico', true), term),
-            countSlot,
-          ),
-          h(
-            'div',
-            { class: 'filters' },
-            h('label', { class: 'filter' }, h('span', {}, 'From'), fromInput),
-            h('label', { class: 'filter' }, h('span', {}, 'To'), toInput),
-            h('label', { class: 'filter' }, h('span', {}, 'Sales rep'), repSelect),
-            h('label', { class: 'filter' }, h('span', {}, 'Outlet'), outletSelect),
-            // Wrapped in a .filter with a hidden label so the button's height and
-            // baseline match the selects beside it.
-            h(
-              'div',
-              { class: 'filter no-label' },
-              h('span', { 'aria-hidden': 'true' }, 'Reset'),
-              h(
-                'button',
-                { class: 'btn secondary sm', type: 'button', onclick: resetFilters },
-                'Reset filters',
-              ),
-            ),
-          ),
-          tableSlot,
-        ),
+        tabBar,
+        recordsPanel,
+        simsPanel,
       ),
     );
     draw();
