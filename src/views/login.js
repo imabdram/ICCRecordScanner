@@ -97,13 +97,7 @@ export function renderLogin(root, onSignedIn) {
     h(
       'div',
       { class: 'login-page' },
-      // Brand lockup, desktop only: the card already carries the logo on mobile.
-      h(
-        'div',
-        { class: 'login-brandbar' },
-        h('img', { src: '/amtel-logo.png', alt: 'Amtel', class: 'login-logo-lg' }),
-        h('span', { class: 'tagline' }, 'Always closer you'),
-      ),
+      // One logo only, inside the card above the heading.
       form,
       h('div', { class: 'login-footer' }, 'Amtel · Bari Region'),
     ),
