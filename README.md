@@ -170,6 +170,16 @@ are not uploaded.
 flutter test          # 10 parser/summary cases, including the commission trap
 ```
 
+### SIM cards opened
+
+The Regional Outlets page also reports SIM cards opened (rows in `scans`):
+
+- per sales rep: today, this month, all time, and the last scan
+- per outlet: two extra columns, SIMs today and SIMs this month
+- days are bucketed in `Africa/Mogadishu`, like the e-voucher reports
+
+Backed by `v_rep_sim_report` (new) and by `v_outlet_overview` (extended) in
+`scripts/schema_v16_sim_reports.sql`.
 ## Regional outlet management (website)
 
 A supervisor manages a whole **region**, not an outlet.
