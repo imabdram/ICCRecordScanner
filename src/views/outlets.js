@@ -88,7 +88,6 @@ export async function renderOutlets(root, { profile }) {
             [
               { label: 'Outlet', value: (r) => h('span', { class: 'cell-strong' }, r.outlet_name) },
               { label: 'Region', value: (r) => r.region_name ?? '—' },
-              { label: 'Team leaders', value: (r) => String(r.team_leaders ?? 0) },
               { label: 'Sales reps', value: (r) => String(r.reps ?? 0) },
               { label: 'SIMs today', value: (r) => num(simsOf(r.outlet_id).today) },
               { label: 'SIMs this month', value: (r) => num(simsOf(r.outlet_id).month) },
@@ -111,7 +110,6 @@ export async function renderOutlets(root, { profile }) {
             [
               { label: 'Outlet', value: (r) => h('span', { class: 'cell-strong' }, r.outlet_name) },
               { label: 'Region', value: (r) => r.region_name ?? '—' },
-              { label: 'Team leaders', value: (r) => String(r.team_leaders ?? 0) },
               { label: 'Sales reps', value: (r) => String(r.reps ?? 0) },
               { label: 'Active users', value: (r) => String(r.active_users ?? 0) },
               { label: 'E-vouchers today', value: (r) => money(r.vouchers_today) },
