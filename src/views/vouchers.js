@@ -396,6 +396,116 @@ export async function renderVouchers(root, { profile }) {
     );
   }
 
+  // ---- excel ---------------------------------------------------------------
+  /** The current tab as a workbook, with the range in the header block. */
+  async function exportExcel() {
+    const ExcelJS = (await import('exceljs')).default;
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet('E-vouchers');
+
+    const phonesMap = phones();
+    const list = byRep();
+    const MONEY_FMT = String.fromCharCode(34) + "$" + String.fromCharCode(34) + "#,##0.00";
+
+    ws.addRow(['E-vouchers']);
+    ws.addRow([dayLabel(state.from) + ' - ' + dayLabel(state.to)]);
+    ws.addRow([]);
+
+    let headers = [];
+    let body = [];
+    let totalRow = [];
+
+    if (state.tab === 'team') {
+      headers = ['Sales rep', 'Number', 'Outlet', 'Today', 'In range', 'Vouchers', 'Last day'];
+      body = list.map((rep) => [
+        rep.name ?? '',
+        phonesMap.get(rep.id) ?? '',
+        rep.outlet ?? '',
+        Number(rep.today),
+        Number(rep.range),
+        Number(rep.vouchers),
+        dayLabel(rep.lastDay) || 'never',
+      ]);
+      const t2 = totals(list);
+      totalRow = ['TOTAL', '', '', Number(t2.today), Number(t2.amount), Number(t2.vouchers), ''];
+    } else if (state.tab === 'days') {
+      headers = ['Day', 'Reps', 'Vouchers', 'Amount'];
+      const team = buildTeam(rows, state.from, state.to);
+      body = [...team.rows].reverse().map((day) => [
+        day.day,
+        day.byRep.length,
+        Number(day.vouchers),
+        Number(day.amount),
+      ]);
+      totalRow = ['TOTAL', '', Number(team.totals.vouchers), Number(team.totals.amount)];
+    } else {
+      const rep = list.find((r) => r.id === state.repId);
+      ws.getCell('A3').value = 'Sales rep: ' + (rep?.name ?? '');
+      headers = ['Day', 'Vouchers', 'Amount'];
+      const byDay = new Map();
+      for (const row of rows) {
+        if (row.sales_rep_id !== state.repId) continue;
+        const day = String(row.day).slice(0, 10);
+        const current = byDay.get(day) ?? { vouchers: 0, amount: 0 };
+        current.vouchers += Number(row.vouchers ?? 0);
+        current.amount += Number(row.amount ?? 0);
+        byDay.set(day, current);
+      }
+      let vouchers = 0;
+      let amount = 0;
+      for (const day of eachDay(state.from, state.to).reverse()) {
+        const found = byDay.get(day) ?? { vouchers: 0, amount: 0 };
+        vouchers += found.vouchers;
+        amount += found.amount;
+        body.push([day, Number(found.vouchers), Number(found.amount)]);
+      }
+      totalRow = ['TOTAL', Number(vouchers), Number(amount)];
+    }
+
+    const headerRow = ws.addRow(headers).number;
+    body.forEach((row) => ws.addRow(row));
+    const total = ws.addRow(totalRow);
+
+    ws.getRow(1).font = { bold: true, size: 14 };
+    ws.getRow(headerRow).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    ws.getRow(headerRow).fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FFE30613' },
+    };
+    total.font = { bold: true };
+    total.border = { top: { style: 'thin' } };
+
+    ws.columns.forEach((col, i) => {
+      col.width = i === 0 ? 32 : 16;
+    });
+
+    // Only the money columns of the active tab.
+    if (state.tab === 'team') {
+      ws.getColumn(4).numFmt = MONEY_FMT;
+      ws.getColumn(5).numFmt = MONEY_FMT;
+    } else if (state.tab === 'days') {
+      ws.getColumn(4).numFmt = MONEY_FMT;
+    } else {
+      ws.getColumn(3).numFmt = MONEY_FMT;
+    }
+
+    const buffer = await wb.xlsx.writeBuffer();
+    const url = URL.createObjectURL(
+      new Blob([buffer], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      }),
+    );
+    const a = h('a', {
+      href: url,
+      download: 'e-vouchers-' + state.tab + '-' + state.from + '_' + state.to + '.xlsx',
+    });
+    document.body.append(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
   // ---- pdf -----------------------------------------------------------------
   /**
    * A real PDF of whatever the current tab shows, so it can be mailed or filed
@@ -542,6 +652,7 @@ export async function renderVouchers(root, { profile }) {
         h(
           'div',
           { class: 'page-actions', style: { display: 'flex', gap: '8px' } },
+          h('button', { class: 'btn secondary', type: 'button', onclick: exportExcel }, 'Excel'),
           h('button', { class: 'btn secondary', type: 'button', onclick: exportPdf }, 'PDF'),
           h('button', { class: 'btn secondary', type: 'button', onclick: () => window.print() }, 'Print'),
         ),
