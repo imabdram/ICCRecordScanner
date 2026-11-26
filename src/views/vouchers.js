@@ -42,13 +42,25 @@ export async function renderVouchers(root, { profile }) {
   mount(root, h('div', {}, skeletonPanel(6)));
 
   const now = new Date();
-  const monthStart = iso(new Date(now.getFullYear(), now.getMonth(), 1));
   const todayIso = iso(now);
+
+  // A month is the unit people report by, so the range is derived from one: a
+  // past month ends on its last day, the current month ends today.
+  const monthBounds = (year, month) => {
+    const from = iso(new Date(year, month, 1));
+    const lastDay = iso(new Date(year, month + 1, 0));
+    const isCurrent = year === now.getFullYear() && month === now.getMonth();
+    return { from, to: isCurrent ? todayIso : lastDay };
+  };
+
+  const initial = monthBounds(now.getFullYear(), now.getMonth());
 
   const state = {
     tab: 'team',
-    from: monthStart,
-    to: todayIso,
+    year: now.getFullYear(),
+    month: now.getMonth(),
+    from: initial.from,
+    to: initial.to,
     repId: '',
     openDay: null,
   };
@@ -598,6 +610,79 @@ export async function renderVouchers(root, { profile }) {
 
     doc.save(`e-vouchers-${state.tab}-${state.from}_${state.to}.pdf`);
   }
+  // ---- month stepper -------------------------------------------------------
+  const monthLabel = h('span', { style: { fontWeight: '700', minWidth: '150px', display: 'inline-block', textAlign: 'center' } });
+
+  const canGoForward = () =>
+    !(state.year === now.getFullYear() && state.month === now.getMonth());
+
+  const refreshLabel = () => {
+    monthLabel.textContent = MONTHS[state.month] + ' ' + state.year;
+    nextButton.disabled = !canGoForward();
+    nextButton.style.opacity = canGoForward() ? '1' : '.35';
+  };
+
+  async function shiftMonth(delta) {
+    let month = state.month + delta;
+    let year = state.year;
+    if (month < 0) { month = 11; year -= 1; }
+    if (month > 11) { month = 0; year += 1; }
+    if (year > now.getFullYear() || (year === now.getFullYear() && month > now.getMonth())) return;
+
+    state.year = year;
+    state.month = month;
+    const bounds = monthBounds(year, month);
+    state.from = bounds.from;
+    state.to = bounds.to;
+    state.openDay = null;
+    await load();
+    refreshLabel();
+    draw();
+  }
+
+  const prevButton = h(
+    'button',
+    { class: 'btn secondary sm', type: 'button', 'aria-label': 'Previous month', onclick: () => shiftMonth(-1) },
+    '‹',
+  );
+
+  const nextButton = h(
+    'button',
+    { class: 'btn secondary sm', type: 'button', 'aria-label': 'Next month', onclick: () => shiftMonth(1) },
+    '›',
+  );
+
+  const thisMonthButton = h(
+    'button',
+    {
+      class: 'btn secondary sm',
+      type: 'button',
+      onclick: async () => {
+        state.year = now.getFullYear();
+        state.month = now.getMonth();
+        const bounds = monthBounds(state.year, state.month);
+        state.from = bounds.from;
+        state.to = bounds.to;
+        state.openDay = null;
+        await load();
+        refreshLabel();
+        draw();
+      },
+    },
+    'This month',
+  );
+
+  const stepper = h(
+    'div',
+    { style: { display: 'flex', alignItems: 'center', gap: '6px' } },
+    prevButton,
+    monthLabel,
+    nextButton,
+    thisMonthButton,
+  );
+
+  refreshLabel();
+
   // ---- chrome --------------------------------------------------------------
   function tabButton(value, label) {
     return h(
@@ -661,7 +746,7 @@ export async function renderVouchers(root, { profile }) {
       h(
         'div',
         { class: 'panel' },
-        h('div', { class: 'toolbar' }, h('div', { class: 'search' }, term), statusSlot),
+        h('div', { class: 'toolbar' }, h('div', { class: 'search' }, term), stepper, statusSlot),
         tabBar,
         bodySlot,
       ),
