@@ -8,14 +8,13 @@ const money = (v) =>
   })}`;
 
 /**
- * Regional outlets, in two tables: e-vouchers and SIM cards.
+ * Regional outlets, SIM cards first, then e-vouchers.
  *
- * Each table answers one question — "which branch is selling airtime" and
- * "which branch is opening SIMs" — instead of one wide table where the money and
- * the counts competed for attention.
+ * Two tables rather than one wide one: a supervisor reading SIMs should not have
+ * to skip past money columns, and vice versa. RLS decides the list, so this shows
+ * nothing outside the caller's region even if opened by hand.
  *
- * RLS decides the list, so this shows nothing outside the caller's region even if
- * opened by hand. The per-rep SIM breakdown lives on Scan Records.
+ * The per-rep SIM breakdown lives on Scan Records, next to the records it counts.
  */
 export async function renderOutlets(root, { profile }) {
   mount(root, h('div', {}, skeletonPanel(5)));
@@ -51,31 +50,8 @@ export async function renderOutlets(root, { profile }) {
           card('Outlets', String(rows.length), { foot: 'in your region' }),
           card('Team Leaders', String(leaders)),
           card('Sales Reps', String(reps)),
-          card('E-Vouchers Today', money(today), { accent: 'accent-red' }),
-          card('This Month', money(month), { accent: 'accent-green' }),
-        ),
-        h(
-          'div',
-          { class: 'panel' },
-          h('h2', { style: { margin: '0 0 4px', fontSize: '16px' } }, 'Outlets · e-vouchers'),
-          h(
-            'p',
-            { class: 'sub', style: { margin: '0 0 12px' } },
-            'Airtime totals per outlet, today and this month',
-          ),
-          table(
-            [
-              { label: 'Outlet', value: (r) => h('span', { class: 'cell-strong' }, r.outlet_name) },
-              { label: 'Region', value: (r) => r.region_name ?? '—' },
-              { label: 'Team leaders', value: (r) => String(r.team_leaders ?? 0) },
-              { label: 'Sales reps', value: (r) => String(r.reps ?? 0) },
-              { label: 'Active users', value: (r) => String(r.active_users ?? 0) },
-              { label: 'E-vouchers today', value: (r) => money(r.vouchers_today) },
-              { label: 'E-vouchers this month', value: (r) => money(r.vouchers_month) },
-            ],
-            rows,
-            'No outlets in your scope. A supervisor needs a region assigned; ask an administrator.',
-          ),
+          card('SIMs Today', String(simsToday), { accent: 'accent-red' }),
+          card('E-Vouchers Today', money(today), { accent: 'accent-green' }),
         ),
         h(
           'div',
@@ -95,6 +71,29 @@ export async function renderOutlets(root, { profile }) {
               { label: 'SIMs today', value: (r) => String(r.sims_today ?? 0) },
               { label: 'SIMs this month', value: (r) => String(r.sims_month ?? 0) },
               { label: 'SIMs total', value: (r) => String(r.sims_total ?? 0) },
+            ],
+            rows,
+            'No outlets in your scope. A supervisor needs a region assigned; ask an administrator.',
+          ),
+        ),
+        h(
+          'div',
+          { class: 'panel' },
+          h('h2', { style: { margin: '0 0 4px', fontSize: '16px' } }, 'Outlets · e-vouchers'),
+          h(
+            'p',
+            { class: 'sub', style: { margin: '0 0 12px' } },
+            `Today ${money(today)} · this month ${money(month)} · per outlet`,
+          ),
+          table(
+            [
+              { label: 'Outlet', value: (r) => h('span', { class: 'cell-strong' }, r.outlet_name) },
+              { label: 'Region', value: (r) => r.region_name ?? '—' },
+              { label: 'Team leaders', value: (r) => String(r.team_leaders ?? 0) },
+              { label: 'Sales reps', value: (r) => String(r.reps ?? 0) },
+              { label: 'Active users', value: (r) => String(r.active_users ?? 0) },
+              { label: 'E-vouchers today', value: (r) => money(r.vouchers_today) },
+              { label: 'E-vouchers this month', value: (r) => money(r.vouchers_month) },
             ],
             rows,
             'No outlets in your scope.',
