@@ -150,6 +150,27 @@ export async function renderVouchers(root, { profile }) {
   function teamView() {
     const list = byRep();
     const phonesMap = phones();
+
+    // Everyone in scope, not only the people who sold: a rep with 0 in the period
+    // is exactly what a supervisor needs to see.
+    const seen = new Set(list.map((r) => r.id));
+    for (const user of users) {
+      if (seen.has(user.id)) continue;
+      if (user.role !== 'sales_rep' && user.role !== 'team_leader') continue;
+      if (user.active === false) continue;
+      list.push({
+        id: user.id,
+        name: user.full_name || user.username,
+        outlet: '—',
+        region: null,
+        today: 0,
+        range: 0,
+        vouchers: 0,
+        days: 0,
+        lastDay: null,
+      });
+    }
+    list.sort((a, b) => b.range - a.range || String(a.name).localeCompare(String(b.name)));
     const q = term.value.trim().toLowerCase();
 
     const visible = list.filter(
@@ -219,7 +240,8 @@ export async function renderVouchers(root, { profile }) {
     drawCards(byRep());
 
     const body = [];
-    for (const day of team.rows) {
+    // Newest day first.
+    for (const day of [...team.rows].reverse()) {
       const open = state.openDay === day.day;
       const row = h(
         'tr',
@@ -378,9 +400,6 @@ export async function renderVouchers(root, { profile }) {
     );
   }
 
-  const fromInput = h('input', { type: 'date', value: state.from, 'aria-label': 'From' });
-  const toInput = h('input', { type: 'date', value: state.to, 'aria-label': 'To' });
-
   function draw() {
     bodySlot.replaceChildren(
       state.tab === 'team'
@@ -421,68 +440,11 @@ export async function renderVouchers(root, { profile }) {
           h('button', { class: 'btn secondary', type: 'button', onclick: () => window.print() }, 'Print'),
         ),
       ),
-      h(
-        'div',
-        { class: 'panel' },
-        h(
-          'div',
-          { class: 'filters' },
-          h('label', { class: 'filter' }, h('span', {}, 'From'), fromInput),
-          h('label', { class: 'filter' }, h('span', {}, 'To'), toInput),
-          h(
-            'div',
-            { class: 'filter no-label' },
-            h('span', { 'aria-hidden': 'true' }, 'x'),
-            h(
-              'button',
-              {
-                class: 'btn sm',
-                type: 'button',
-                onclick: async () => {
-                  if (fromInput.value > toInput.value) {
-                    statusSlot.replaceChildren(banner('error', 'The start date is after the end date.'));
-                    return;
-                  }
-                  state.from = fromInput.value;
-                  state.to = toInput.value;
-                  state.openDay = null;
-                  await load();
-                  draw();
-                },
-              },
-              'Apply',
-            ),
-          ),
-          h(
-            'div',
-            { class: 'filter no-label' },
-            h('span', { 'aria-hidden': 'true' }, 'x'),
-            h(
-              'button',
-              {
-                class: 'btn secondary sm',
-                type: 'button',
-                onclick: async () => {
-                  fromInput.value = monthStart;
-                  toInput.value = todayIso;
-                  state.from = monthStart;
-                  state.to = todayIso;
-                  state.openDay = null;
-                  await load();
-                  draw();
-                },
-              },
-              'This month',
-            ),
-          ),
-        ),
-        statusSlot,
-      ),
       cardsSlot,
       h(
         'div',
         { class: 'panel' },
-        h('div', { class: 'toolbar' }, h('div', { class: 'search' }, term)),
+        h('div', { class: 'toolbar' }, h('div', { class: 'search' }, term), statusSlot),
         tabBar,
         bodySlot,
       ),
