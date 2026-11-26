@@ -237,6 +237,7 @@ export async function renderVouchers(root, { profile }) {
 
   function daysView() {
     const team = buildTeam(rows, state.from, state.to);
+    const phonesMap = phones();
     drawCards(byRep());
 
     const body = [];
@@ -269,12 +270,13 @@ export async function renderVouchers(root, { profile }) {
               'td',
               { colspan: '4' },
               tableShell(
-                ['Sales rep', 'Vouchers', 'Amount'],
+                ['Sales rep', 'Number', 'Vouchers', 'Amount'],
                 day.byRep.map((rep) =>
                   h(
                     'tr',
                     {},
                     h('td', {}, rep.sales_rep_name),
+                    h('td', {}, phonesMap.get(rep.sales_rep_id) ?? '—'),
                     h('td', { class: 'num' }, String(rep.vouchers)),
                     h('td', { class: 'num' }, money(rep.amount)),
                   ),
