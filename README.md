@@ -170,6 +170,21 @@ are not uploaded.
 flutter test          # 10 parser/summary cases, including the commission trap
 ```
 
+## Regional outlet management (website)
+
+A supervisor manages a whole **region**, not an outlet.
+
+- `Regional Outlets` page: every outlet in the region with team leaders, reps,
+  active users, and voucher totals for today / this month (`v_outlet_overview`)
+- Users & Team: create team leaders or reps, assign any outlet and team leader in
+  the region, activate/deactivate, reset passwords
+- transfers are guarded by `users_guard_region`: a supervisor may move a person
+  to any outlet **inside** the region and nowhere else; only an admin may change
+  a supervisor's region
+- every create / update / transfer / disable writes a row to `user_audit`, readable
+  by the supervisor for their region
+
+`scripts/schema_v15_region_management.sql` must be applied.
 ## Daily E-Voucher Reports (website)
 
 A separate page from the E-vouchers dashboard, built for checking a period:

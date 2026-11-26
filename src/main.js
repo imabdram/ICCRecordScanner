@@ -9,6 +9,7 @@ import { renderUsers } from './views/users.js';
 import { renderAudit } from './views/audit.js';
 import { renderVouchers } from './views/vouchers.js';
 import { renderVoucherReports } from './views/voucher-reports.js';
+import { renderOutlets } from './views/outlets.js';
 import { renderSettings } from './views/settings.js';
 
 const root = $('#app');
@@ -18,6 +19,13 @@ const root = $('#app');
 const NAV = [
   { id: 'dashboard', label: 'Dashboard', icon: 'dashboard', render: renderDashboard },
   { id: 'records', label: 'Scan Records', icon: 'records', render: renderRecords },
+  {
+    id: 'outlets',
+    label: 'Regional Outlets',
+    icon: 'dashboard',
+    render: renderOutlets,
+    roles: ['admin', 'supervisor', 'team_leader'],
+  },
   {
     id: 'audit',
     label: 'Deleted records',

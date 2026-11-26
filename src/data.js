@@ -205,3 +205,18 @@ export async function fetchVoucherDailyLocal(from, to, limit = 5000) {
 
   return unwrap(await query) ?? [];
 }
+/**
+ * Every outlet the caller may see, with its people and voucher totals.
+ * RLS on the view's base tables decides the scope: a region supervisor gets
+ * every outlet in their region, a team leader only their own.
+ */
+export async function fetchOutletOverview() {
+  return (
+    unwrap(
+      await supabase()
+        .from('v_outlet_overview')
+        .select('outlet_id,outlet_name,region_id,region_name,zone_name,reps,team_leaders,active_users,vouchers_today,vouchers_month')
+        .order('outlet_name', { ascending: true }),
+    ) ?? []
+  );
+}

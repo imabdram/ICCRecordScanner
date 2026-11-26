@@ -146,7 +146,7 @@ async function callerProfile(req: Request) {
 
   const { data, error } = await admin
     .from('users')
-    .select('id, auth_user_id, username, full_name, role, outlet_id, active')
+    .select('id, auth_user_id, username, full_name, role, outlet_id, region_id, active')
     .eq('auth_user_id', userData.user.id)
     .maybeSingle();
 
@@ -173,7 +173,7 @@ async function resolveOutlet(outletId: string | null | undefined) {
 async function scopeOf(userId: string) {
   const { data, error } = await admin
     .from('users')
-    .select('id, role, outlet_id, outlets(id, regions(zone_id))')
+    .select('id, role, outlet_id, region_id, outlets(id, region_id, regions(id, zone_id))')
     .eq('id', userId)
     .maybeSingle();
   if (error || !data) return null;
@@ -182,6 +182,8 @@ async function scopeOf(userId: string) {
     id: data.id,
     role: data.role,
     outlet_id: data.outlet_id,
+    // A supervisor has no outlet, so the region is the scope that matters.
+    region_id: (data as any).region_id ?? outlet?.region_id ?? null,
     zone_id: outlet?.regions?.zone_id ?? null,
   };
 }
@@ -215,10 +217,13 @@ async function canAdminister(caller: any, targetId: string) {
   if (!mine) return { ok: false, error: 'Your account has no outlet assigned.' };
 
   if (caller.role === 'supervisor') {
+    // Region first: a supervisor covers every outlet in their region. The zone
+    // check stays as a fallback for accounts created before regions existed.
+    const sameRegion = mine.region_id && mine.region_id === target.region_id;
     const sameZone = mine.zone_id && mine.zone_id === target.zone_id;
-    return sameZone
+    return sameRegion || sameZone
       ? { ok: true, error: null }
-      : { ok: false, error: 'That person is outside your zone.' };
+      : { ok: false, error: 'That person is outside your region.' };
   }
   if (caller.role === 'team_leader') {
     const sameOutlet = mine.outlet_id && mine.outlet_id === target.outlet_id;
@@ -340,19 +345,14 @@ async function handleCreateUser(body: any, caller: any): Promise<Response> {
   // Supervisors and team leaders may only create people inside their own
   // scope. The database enforces this too, but a clear error beats a 500.
   if (caller.role !== 'admin' && outlet) {
-    const { data: callerOutlet } = await admin
-      .from('outlets')
-      .select('id, region_id, regions(zone_id)')
-      .eq('id', caller.outlet_id)
-      .maybeSingle();
-    const callerZone = (callerOutlet as any)?.regions?.zone_id;
-    const targetZone = (outlet as any)?.regions?.zone_id;
-    const sameZone = callerZone && callerZone === targetZone;
-    const sameOutlet = caller.outlet_id === outlet.id;
-    if (caller.role === 'supervisor' && !sameZone) {
-      return fail('That outlet is outside your zone.', 403);
+    if (caller.role === 'supervisor') {
+      // The supervisor's own region, not their (absent) outlet.
+      const targetRegion = (outlet as any).region_id;
+      if (!caller.region_id || String(targetRegion) !== String(caller.region_id)) {
+        return fail('That outlet is outside your region.', 403);
+      }
     }
-    if (caller.role === 'team_leader' && !sameOutlet) {
+    if (caller.role === 'team_leader' && caller.outlet_id !== outlet.id) {
       return fail('You can only add people to your own outlet.', 403);
     }
   }

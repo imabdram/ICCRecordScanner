@@ -395,6 +395,46 @@ r2 = await readJson(await call(handler,
   { Authorization: 'Bearer sup@sim.local' }));
 ok('scoped: a supervisor cannot create a supervisor', r2.status === 403, JSON.stringify(r2.body));
 
+// A REGION supervisor has no outlet at all -- this is the shape the website
+// creates now, and the thing that used to fail with "outside your zone".
+db.authUsers.push({ id: 'auth-bari', email: 'bari@sim.local', password: 'x', banned: false });
+db.users.push({ id: 'u-bari', auth_user_id: 'auth-bari', username: 'bari', full_name: 'Bari Sup',
+                role: 'supervisor', outlet_id: null, region_id: 'r-bari',
+                team_leader_id: null, active: true });
+
+r2 = await readJson(await call(handler,
+  { action: 'create-user', username: 'bari_lead', password: 'Pass1234!', role: 'team_leader',
+    outlet_id: 'outlet-bosaso' },
+  { Authorization: 'Bearer bari@sim.local' }));
+ok('region: a supervisor with no outlet creates a team leader in his region',
+   r2.status === 200, JSON.stringify(r2.body));
+const bariLeader = r2.body?.user?.id;
+
+r2 = await readJson(await call(handler,
+  { action: 'create-user', username: 'mudug_rep', password: 'Pass1234!', role: 'sales_rep',
+    outlet_id: 'outlet-galkacyo' },
+  { Authorization: 'Bearer bari@sim.local' }));
+ok('region: a supervisor cannot create in another region (same zone)',
+   r2.status === 403, JSON.stringify(r2.body));
+
+r2 = await readJson(await call(handler,
+  { action: 'create-user', username: 'sool_rep', password: 'Pass1234!', role: 'sales_rep',
+    outlet_id: 'outlet-far' },
+  { Authorization: 'Bearer bari@sim.local' }));
+ok('region: a supervisor cannot create in another zone',
+   r2.status === 403, JSON.stringify(r2.body));
+
+r2 = await readJson(await call(handler,
+  { action: 'set-password', user_id: bariLeader, password: 'NewPass123!' },
+  { Authorization: 'Bearer bari@sim.local' }));
+ok('region: a supervisor manages a leader he created', r2.status === 200, JSON.stringify(r2.body));
+
+r2 = await readJson(await call(handler,
+  { action: 'set-active', user_id: farId, active: false },
+  { Authorization: 'Bearer bari@sim.local' }));
+ok('region: a supervisor cannot disable someone in another region',
+   r2.status === 403, JSON.stringify(r2.body));
+
 // ---------------------------------------------------------------- report
 console.log('\n' + '='.repeat(72));
 let pass = 0;
