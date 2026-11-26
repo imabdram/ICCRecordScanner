@@ -137,11 +137,22 @@ export async function renderVouchers(root, { profile }) {
   }
 
   // ---- views ---------------------------------------------------------------
-  function tableShell(head, body, foot) {
+  // The numeric list names the column indexes that hold figures: those are right
+  // aligned, everything else (names, phone numbers, badges) stays left, so a
+  // header can never sit over a cell with the opposite alignment.
+  function tableShell(head, body, foot, numeric = []) {
     return h(
       'table',
       { class: 'report-table' },
-      h('thead', {}, h('tr', {}, ...head.map((label, i) => h('th', { class: i ? 'num' : '' }, label)))),
+      h(
+        'thead',
+        {},
+        h(
+          'tr',
+          {},
+          ...head.map((label, i) => h('th', { class: numeric.includes(i) ? 'num' : '' }, label)),
+        ),
+      ),
       h('tbody', {}, ...body),
       foot ? h('tfoot', {}, foot) : null,
     );
@@ -231,6 +242,7 @@ export async function renderVouchers(root, { profile }) {
           h('td', { class: 'num' }, String(t.vouchers)),
           h('td', {}, ''),
         ),
+        [2, 3, 4],
       ),
     );
   }
@@ -281,6 +293,7 @@ export async function renderVouchers(root, { profile }) {
                     h('td', { class: 'num' }, money(rep.amount)),
                   ),
                 ),
+                [2, 3],
               ),
             ),
           ),
@@ -302,6 +315,7 @@ export async function renderVouchers(root, { profile }) {
           h('td', { class: 'num' }, String(team.totals.vouchers)),
           h('td', { class: 'num strong' }, money(team.totals.amount)),
         ),
+        [1, 2, 3],
       ),
     );
   }
@@ -381,6 +395,7 @@ export async function renderVouchers(root, { profile }) {
           h('td', { class: 'num' }, String(rep.vouchers)),
           h('td', { class: 'num strong' }, money(rep.range)),
         ),
+        [1, 2],
       ),
     );
   }
