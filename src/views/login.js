@@ -1,4 +1,4 @@
-import { banner, h, icon, mount, setBusy } from '../ui.js';
+import { banner, h, mount, setBusy } from '../ui.js';
 import { signIn } from '../supabase.js';
 
 /**
@@ -24,12 +24,35 @@ export function renderLogin(root, onSignedIn) {
     autocomplete: 'current-password',
     placeholder: 'Enter your password',
   });
+
+  // Show/hide the password. Purely visual: the value and the submitted form are
+  // unchanged, and the field goes back to `password` when hidden.
+  const reveal = h(
+    'button',
+    {
+      class: 'reveal',
+      type: 'button',
+      'aria-label': 'Show password',
+      'aria-pressed': 'false',
+      onclick: () => {
+        const showing = password.type === 'text';
+        password.type = showing ? 'password' : 'text';
+        reveal.setAttribute('aria-pressed', String(!showing));
+        reveal.setAttribute('aria-label', showing ? 'Show password' : 'Hide password');
+        reveal.classList.toggle('on', !showing);
+        password.focus();
+      },
+    },
+    h('span', { class: 'eye' }, h('span', { class: 'pupil' })),
+  );
+
   const message = h('div', {});
-  const submit = h('button', { class: 'btn block', type: 'submit' }, 'Sign in');
+  const submit = h('button', { class: 'btn block signin', type: 'submit' }, 'Sign in');
 
   const form = h(
     'form',
     {
+      class: 'login-card',
       onsubmit: async (event) => {
         event.preventDefault();
         message.replaceChildren();
@@ -45,32 +68,45 @@ export function renderLogin(root, onSignedIn) {
         }
       },
     },
-    h('div', { style: { textAlign: 'center', marginBottom: '22px' } },
-      h('div', {
-        class: 'brand-logo',
-        style: {
-          width: '52px', height: '52px', borderRadius: '15px', margin: '0 auto 14px',
-          background: 'linear-gradient(140deg,#ff4b57,#e11929 60%)',
-          boxShadow: '0 10px 24px -8px rgba(225,25,41,.6)', display: 'grid', placeItems: 'center',
-        },
-      }, icon('records', 26, 'ico')),
-      h('h1', { style: { fontSize: '22px', margin: 0 } }, 'SIM Management System'),
-      h('p', { class: 'muted', style: { marginTop: '6px' } }, 'Sign in to the Bari Region operations console.'),
-    ),
-    message,
-    h('label', { class: 'field' }, h('span', {}, 'Username'), username),
-    h('label', { class: 'field', style: { marginTop: '14px' } }, h('span', {}, 'Password'), password),
-    h('div', { style: { marginTop: '20px' } }, submit),
     h(
-      'p',
-      { class: 'muted', style: { textAlign: 'center', fontSize: '12.5px', marginTop: '16px' } },
-      'Accounts are created by an administrator. If you have forgotten your password, ask them to set a new one — there is no reset email.',
+      'div',
+      { class: 'login-brand' },
+      h('img', { src: '/amtel-logo.png', alt: 'Amtel', class: 'login-logo' }),
+      h('span', { class: 'tagline' }, 'Always closer you'),
+    ),
+    h('h1', { class: 'login-title' }, 'SIM Management System'),
+    h('p', { class: 'login-sub' }, 'Sign in to the Bari Region operations console.'),
+    message,
+    h('label', { class: 'field login-field' }, h('span', {}, 'Username'), username),
+    h('label', { class: 'field login-field' }, h('span', {}, 'Password'), h('div', { class: 'with-reveal' }, password, reveal)),
+    h('div', { class: 'login-submit' }, submit),
+    h(
+      'div',
+      { class: 'login-notice' },
+      h('span', { class: 'notice-title' }, 'Security notice'),
+      h(
+        'p',
+        {},
+        'Accounts are created by an administrator. If you have forgotten your password, ask them to set a new one — there is no reset email.',
+      ),
     ),
   );
 
   mount(
     root,
-    h('div', { class: 'auth-wrap' }, h('div', { class: 'panel narrow', style: { width: '100%' } }, form)),
+    h(
+      'div',
+      { class: 'login-page' },
+      // Brand lockup, desktop only: the card already carries the logo on mobile.
+      h(
+        'div',
+        { class: 'login-brandbar' },
+        h('img', { src: '/amtel-logo.png', alt: 'Amtel', class: 'login-logo-lg' }),
+        h('span', { class: 'tagline' }, 'Always closer you'),
+      ),
+      form,
+      h('div', { class: 'login-footer' }, 'Amtel · Bari Region'),
+    ),
   );
   username.focus();
 }
