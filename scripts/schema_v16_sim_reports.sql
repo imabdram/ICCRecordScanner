@@ -75,16 +75,22 @@ select
     where v.outlet_id = o.id
       and date_trunc('month', v.received_at at time zone 'Africa/Mogadishu')
           = date_trunc('month', now() at time zone 'Africa/Mogadishu')) as vouchers_month,
+  -- Fall back to the rep's outlet: a scan row whose outlet_id is null (or was
+  -- stamped before an outlet move) must still land on a branch, otherwise an
+  -- outlet shows 0 while its reps show real numbers.
   (select count(*) from public.scans s
-    where s.outlet_id = o.id
+    left join public.users su on su.id = s.sales_rep_id
+    where coalesce(s.outlet_id, su.outlet_id) = o.id
       and (s.created_at at time zone 'Africa/Mogadishu')::date
           = (now() at time zone 'Africa/Mogadishu')::date)   as sims_today,
   (select count(*) from public.scans s
-    where s.outlet_id = o.id
+    left join public.users su on su.id = s.sales_rep_id
+    where coalesce(s.outlet_id, su.outlet_id) = o.id
       and date_trunc('month', s.created_at at time zone 'Africa/Mogadishu')
           = date_trunc('month', now() at time zone 'Africa/Mogadishu')) as sims_month,
   (select count(*) from public.scans s
-    where s.outlet_id = o.id)                                as sims_total
+    left join public.users su on su.id = s.sales_rep_id
+    where coalesce(s.outlet_id, su.outlet_id) = o.id)        as sims_total
 from public.outlets o
 join public.regions r on r.id = o.region_id
 join public.zones   z on z.id = r.zone_id;
