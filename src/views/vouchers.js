@@ -274,30 +274,20 @@ export async function renderVouchers(root, { profile }) {
       body.push(row);
 
       if (open) {
-        body.push(
-          h(
-            'tr',
-            { class: 'detail-row' },
+        // The breakdown uses the same table, one row per rep: a nested table gets
+        // its own column widths and stops lining up with the day row above it.
+        for (const rep of day.byRep) {
+          body.push(
             h(
-              'td',
-              { colspan: '4' },
-              tableShell(
-                ['Sales rep', 'Number', 'Vouchers', 'Amount'],
-                day.byRep.map((rep) =>
-                  h(
-                    'tr',
-                    {},
-                    h('td', {}, rep.sales_rep_name),
-                    h('td', {}, phonesMap.get(rep.sales_rep_id) ?? '—'),
-                    h('td', { class: 'num' }, String(rep.vouchers)),
-                    h('td', { class: 'num' }, money(rep.amount)),
-                  ),
-                ),
-                [2, 3],
-              ),
+              'tr',
+              { class: 'detail-row' },
+              h('td', { class: 'detail-name' }, rep.sales_rep_name),
+              h('td', {}, phonesMap.get(rep.sales_rep_id) ?? '—'),
+              h('td', { class: 'num' }, String(rep.vouchers)),
+              h('td', { class: 'num' }, money(rep.amount)),
             ),
-          ),
-        );
+          );
+        }
       }
     }
 
@@ -305,7 +295,7 @@ export async function renderVouchers(root, { profile }) {
       'div',
       {},
       tableShell(
-        ['Day', 'Reps', 'Vouchers', 'Amount'],
+        ['Day', 'Reps / Number', 'Vouchers', 'Amount'],
         body.length ? body : [h('tr', {}, h('td', { colspan: '4', class: 'muted' }, 'No days in this range.'))],
         h(
           'tr',
